@@ -2,11 +2,10 @@ const { getRawgData } = require("./service/rawgApiClient");
 const express = require("express");
 const mongoose = require("mongoose");
 const app = express();
-const port = 7000;
+const port = process.env.PORT;
 
-const uri =
-  "mongodb+srv://ravindra:ravindra123@cluster0.xgnqe.mongodb.net/?retryWrites=true&w=majority";
-
+const uri = process.env.MONGODB_URI;
+ 
 const z = {
   id: 3498,
   slug: "grand-theft-auto-v",
