@@ -19,8 +19,6 @@ const getAllGames = async (gamesList) => {
         reviewSummary: gamesList[index].summary,
       };
     });
-    console.log("response.data", response.data);
-    return result.push(response.data);
   });
 };
 
