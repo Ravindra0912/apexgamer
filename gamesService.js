@@ -14,9 +14,17 @@ const getAllGames = async (gamesList) => {
     console.log("respnse", response);
     return response.map((item, index) => {
       const game = item.data.results[0];
+      const { metacritic, rating: rawg } = game;
       return {
         ...game,
         reviewSummary: gamesList[index].summary,
+        ratings: [
+          {
+            metacritic,
+            rawg,
+            ign: null,
+          },
+        ],
       };
     });
   });
