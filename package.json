@@ -2,10 +2,10 @@
   "name": "apexgamer",
   "version": "1.0.0",
   "description": "",
-  "main": "server.js",
+  "main": "src/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "nodemon --env-file=.env --inspect server"
+    "start": "nodemon --env-file=.env --inspect src/index.js"
   },
   "author": "",
   "license": "ISC",

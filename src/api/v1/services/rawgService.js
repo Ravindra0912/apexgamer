@@ -10,4 +10,6 @@ const getRawgData = (path, params = {}) =>
     },
   });
 
-module.exports = { getRawgData };
+module.exports = {
+  getRawgData,
+};

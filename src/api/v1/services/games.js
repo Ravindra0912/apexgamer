@@ -1,4 +1,4 @@
-const { getRawgData } = require("./service/rawgApiClient");
+const { getRawgData } = require("./rawgService");
 
 const getAllGames = async (gamesList) => {
   const gamesPromises = [];
