@@ -1,5 +1,5 @@
-const Game = require("../models/games");
-const { getAllGames } = require("../services/games");
+const Game = require("../models/gamesModels");
+const { getAllGames } = require("../services/gamesService");
 
 const saveNewGames = async (req, res) => {
   try {

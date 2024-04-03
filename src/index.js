@@ -2,7 +2,7 @@ const express = require("express");
 const app = express();
 const port = process.env.PORT;
 
-const gamesRouter = require("./api/v1/routes/games");
+const gamesRouter = require("./api/v1/routes/gamesRoutes");
 const { connectMongo } = require("./config/connection");
 
 

@@ -4,7 +4,7 @@ const {
   getGames,
   getGame,
   deleteAll,
-} = require("../controller/games");
+} = require("../controller/gamesController");
 
 const router = express.Router();
 
