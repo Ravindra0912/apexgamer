@@ -1,5 +1,16 @@
 const Game = require("../models/gamesModels");
-const { getAllGames } = require("../services/gamesService");
+const {
+  getAllGames,
+  getGameDetailsByName,
+} = require("../services/gamesService");
+const dayjs = require("dayjs");
+
+const saveMultipleGames = async (gameInstances) => {
+  const insertedGames = await Game.insertMany(gameInstances);
+  res.send({
+    insertedGames,
+  });
+};
 
 const saveNewGames = async (req, res) => {
   try {
@@ -13,6 +24,7 @@ const saveNewGames = async (req, res) => {
         dominant_color,
         short_screenshots,
         reviewSummary,
+        released,
       }) => {
         return {
           rId: id,
@@ -22,15 +34,27 @@ const saveNewGames = async (req, res) => {
           reviewSummary, // to have a separate API call
           dominantColor: dominant_color,
           screenShots: short_screenshots,
+          releaseDate: dayjs.unix(released),
         };
       }
     );
-    const insertedGames = await Game.insertMany(gameInstances);
-    res.send({
-      insertedGames,
-    });
+    await saveMultipleGames(gameInstances);
   } catch (e) {
     console.log("ERROR", e);
+    res.status(500).send("Internal Server Error");
+  }
+};
+
+const getGameByName = async (req, res) => {
+  try {
+    console.log("REQ", req);
+    const name = req?.query?.name;
+    // console.log("name", name);
+    const response = await getGameDetailsByName(name);
+    res.send(response);
+  } catch (e) {
+    console.log(e);
+    res.status(500).send("Internal Server Error");
   }
 };
 
@@ -49,9 +73,31 @@ const deleteAll = async (req, res) => {
   res.send("all games deleted");
 };
 
+const updateGameData = async (req, res) => {
+  try {
+    // const { summary, id } = req.body;
+    const updatedGame = await Game.findByIdAndUpdate(
+      id,
+      { $set: { ...req.body } }, // update the summary field
+      { new: true } // return the updated document
+    );
+
+    if (!updatedGame) {
+      return res.status(404).send("Game not found");
+    }
+
+    res.send(updatedGame);
+  } catch (error) {
+    console.error("Error updating game summary:", error);
+    res.status(500).send("Internal Server Error");
+  }
+};
+
 module.exports = {
   saveNewGames,
   getGames,
   getGame,
   deleteAll,
+  getGameByName,
+  updateGameData,
 };

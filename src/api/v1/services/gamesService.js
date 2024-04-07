@@ -1,15 +1,16 @@
 const { getRawgData } = require("./rawgService");
 
+const getGameDetailsByName = async (name) => {
+  const data = await getRawgData("games", { search: name });
+  console.log("DATA", data);
+  return data?.data?.results;
+};
+
 const getAllGames = async (gamesList) => {
   const gamesPromises = [];
   for (let i = 0; i < gamesList.length; i++) {
-    gamesPromises.push(
-      getRawgData("games", {
-        search: gamesList[i].name,
-      })
-    );
+    gamesPromises.push(getGameDetailsByName(gamesList[i].name)?.[0]);
   }
-  const result = [];
   return Promise.all(gamesPromises).then((response) => {
     console.log("respnse", response);
     return response.map((item, index) => {
@@ -32,4 +33,5 @@ const getAllGames = async (gamesList) => {
 
 module.exports = {
   getAllGames,
+  getGameDetailsByName,
 };

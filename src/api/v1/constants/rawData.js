@@ -1,0 +1,17 @@
+const SUPPORTED_GAMES = [
+  "Final Fantasy XVI",
+  "Hogwarts Legacy",
+  "Assassin’s Creed Mirage",
+  "Cyberpunk 2077 Phantom Liberty",
+  "The Crew Motorfest",
+  "Sons of the Forest",
+  "Marvel’s Spider-Man 2",
+  "Star Wars Jedi: Survivor",
+  "Dead Island 2",
+  "Season: A Letter to the Future",
+  "Diablo IV",
+  "Atomic Heart",
+  "Starfield",
+  "Avatar Frontiers of Pandora",
+  "The Legend of Zelda: Tears of the Kingdom",
+];

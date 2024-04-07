@@ -8,6 +8,7 @@ const gamesListSchema = new mongoose.Schema({
     reviewSummary: [[String]], // to have a separate API call
     dominantColor: String, // dominant_color,
     screenShots: [[{ id: Number, image: String }]],
+    releaseDate: Number,
   });
   
 const Game = mongoose.model("Games", gamesListSchema);
