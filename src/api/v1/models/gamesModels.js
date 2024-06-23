@@ -1,16 +1,32 @@
 const mongoose = require("mongoose");
+const {
+  reviewDataSchema,
+  reviewSummaryDataSchema,
+} = require("./reviewDataModel");
 
 const gamesListSchema = new mongoose.Schema({
-    rId: Number,
-    rating: Number,
-    ratings: [[{ metacritic: Number, rawg: Number }]],
-    backgroundImage: String,
-    reviewSummary: [[String]], // to have a separate API call
-    dominantColor: String, // dominant_color,
-    screenShots: [[{ id: Number, image: String }]],
-    releaseDate: Number,
-  });
-  
+  rId: Number,
+  rating: Number,
+  steamId: Number,
+  ratings: [[{ metacritic: Number, rawg: Number }]],
+  backgroundImage: String,
+  reviews: [reviewDataSchema],
+  dominantColor: String,
+  screenShots: [[{ id: Number, image: String }]],
+  releaseDate: Number,
+  reviewSummary: reviewSummaryDataSchema,
+  tags: [
+    {
+      id: Number,
+      name: String,
+      slug: String,
+      language: String,
+      games_count: Number,
+      image_background: String,
+    },
+  ],
+});
+
 const Game = mongoose.model("Games", gamesListSchema);
 
 module.exports = Game;

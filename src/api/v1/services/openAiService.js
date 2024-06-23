@@ -4,29 +4,36 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-const getSummaryResponse = async (reviewScripts) => {
-  const completion = await openai.chat.completions.create({
-    model: "gpt-3.5-turbo",
-    messages: [
-      {
-        role: "user",
-        content: reviewScripts,
-      },
-      {
-        role: "user",
-        content: "Summarize above into main pros and cons",
-      },
-    ],
-    temperature: 1,
-    max_tokens: 256,
-    top_p: 1,
-    frequency_penalty: 0,
-    presence_penalty: 0,
-  });
-  return completion.choices[0].message.content;
+const getSummaryResponse = async (reviews, prompt) => {
+  const reviewScripts = reviews.join(', ')
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "user",
+          content: reviewScripts,
+        },
+        {
+          role: "user",
+          content:
+            prompt ||
+            "Summarize the text into pros and cons, give this response as json with pros and cons as array ",
+        },
+      ],
+      temperature: 1,
+      max_tokens: 256,
+      top_p: 1,
+      frequency_penalty: 0,
+      presence_penalty: 0,
+    });
+    console.log("completion", completion);
+    // const completion = {};
+    return completion?.choices?.[0]?.message?.content;
+  } catch (e) {
+    console.log("ERROR", e);
+  }
 };
-
-getSummaryResponse();
 
 module.exports = {
   getSummaryResponse,
