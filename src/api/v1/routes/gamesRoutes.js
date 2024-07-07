@@ -1,8 +1,16 @@
 const express = require("express");
-const { getPopularGamesAndSummarize } = require("../controller/gamesController");
+const {
+  getLatestGamesAndSave,
+  getAllGames,
+  removeAllGames,
+} = require("../controller/gamesController");
 
 const router = express.Router();
 
-router.get("/getCurrentPopularGames", getPopularGamesAndSummarize);
+router.post("/getLatestGamesAndSave", getLatestGamesAndSave);
+
+router.get("/getGames", getAllGames);
+
+router.delete("/removeAllGames", removeAllGames);
 
 module.exports = router;

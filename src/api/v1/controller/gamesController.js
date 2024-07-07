@@ -1,6 +1,7 @@
 const { getSummaryResponse } = require("../services/openAiService");
 const { getRawgData } = require("../services/rawgService");
 const { fetchSteamReviews } = require("../services/steamService");
+const GameModel = require("../models/gamesModels");
 
 const RAWG_STEAM_STORE_ID = 1;
 
@@ -12,7 +13,6 @@ function isIntegerNumber(str) {
 
 const getIdFromSteamUrl = (steamUrl) => {
   const splitUrl = steamUrl?.split("/");
-  console.log("splitUrl", splitUrl);
   let i = splitUrl?.length;
   if (typeof i !== "undefined") {
     while (!isIntegerNumber(splitUrl[i])) {
@@ -24,9 +24,7 @@ const getIdFromSteamUrl = (steamUrl) => {
 };
 
 const getSteamId = async (id) => {
-  console.log("ID", id);
   const response = await getRawgData(`games/${id}/stores`);
-  console.log("STORE DATA response", response);
   const steamUrl = response?.data?.results?.find(
     (storeItem) => storeItem.store_id === RAWG_STEAM_STORE_ID
   )?.url;
@@ -36,17 +34,23 @@ const getSteamId = async (id) => {
   return null;
 };
 
+
+
 const getGamesWithSummarizedReviews = async (games) => {
   let reviewSummaryPromises = [];
-  games.forEach(async (gameItem) => {
+  games.forEach(async (gameItem, i) => {
     const reviewArray = gameItem.reviews.map((item) => {
       return item.reviewText;
     });
-    reviewSummaryPromises.push(reviewArray.length? getSummaryResponse(reviewArray): Promise.resolve([]));
+    // return New Promise((res,))
+    reviewSummaryPromises.push(
+      reviewArray.length > 0
+        ? getSummaryResponse(reviewArray)
+        : Promise.resolve([])
+    );
   });
 
   return Promise.all(reviewSummaryPromises).then((response) => {
-    console.log("reviewSummaryPromises response", response);
     for (let i = 0; i < response.length; i++) {
       games[i].reviewSummary = response[i];
     }
@@ -72,7 +76,6 @@ const getFormattedResults = (results, popularGames) => {
         };
       });
     }
-    // const reviewsSummary = await getSummarisedReviews(reviews);
     return {
       rId: currentGame?.id,
       rawRating: currentGame?.rating,
@@ -98,9 +101,7 @@ const getCurrentPopularGames = async () => {
     page_size: 5,
     page: 1,
   });
-  console.log("RESPONSE", response);
   const popularGames = response?.data?.results;
-  console.log("popularGames", popularGames);
   const promises = popularGames.map(async (popularGame) => {
     const steamId = await getSteamId(popularGame?.id);
     if (steamId) return fetchSteamReviews(steamId);
@@ -109,23 +110,42 @@ const getCurrentPopularGames = async () => {
   return Promise.all(promises)
     .then((results) => {
       const formattedResults = getFormattedResults(results, popularGames);
-      console.log("formattedResults", formattedResults);
-      // console.log("results", results);
-      // return formattedResults
-      // res.send(formattedResults)
       return formattedResults;
     })
     .catch((e) => {
       console.log(e);
     });
-  // res.send(response?.data);
 };
 
-const getPopularGamesAndSummarize = async (req, res) => {
-  const games = await getCurrentPopularGames();
-  const gamesWithSummary = await getGamesWithSummarizedReviews(games);
-  console.log("gamesWithSummary", gamesWithSummary);
-  res.send();
+const getLatestGamesAndSave = async (req, res) => {
+  try {
+    const games = await getCurrentPopularGames();
+    const gamesWithSummary = await getGamesWithSummarizedReviews(games);
+    GameModel.insertMany(gamesWithSummary);
+    res.send(gamesWithSummary);
+  } catch (e) {
+    res.send(e);
+  }
 };
 
-module.exports = { getPopularGamesAndSummarize };
+const getAllGames = async (req, res) => {
+  try {
+    const response = await GameModel.find({});
+    res.send(response);
+  } catch (e) {
+    console.log(e);
+    res.send("falied");
+    // res.status()
+  }
+};
+
+const removeAllGames = async (req, res) => {
+  try {
+    await GameModel.deleteMany({});
+    res.send("GAMES DELETED");
+  } catch (e) {
+    console.log(e);
+  }
+};
+
+module.exports = { getLatestGamesAndSave, getAllGames, removeAllGames };

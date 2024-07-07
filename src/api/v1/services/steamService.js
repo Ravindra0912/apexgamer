@@ -12,7 +12,6 @@ const fetchAllSteamGames = () => {
 };
 
 const fetchSteamReviews = (id, params = {}) => {
-  console.log("in steam", id);
   return axios({
     method: "get",
     url: `https://store.steampowered.com/appreviews/${id}`,

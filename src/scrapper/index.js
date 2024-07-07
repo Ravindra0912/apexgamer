@@ -19,7 +19,6 @@ const getIgnReviewAndRating = async (url) => {
       reviewScript: parsedReviewScript,
     };
   });
-  console.log(reviewSummary);
   browser.close();
 };
 
@@ -40,7 +39,6 @@ const getPCGamerReviewAndRating = async (url) => {
       reviewScript: parsedReviewScript,
     };
   });
-  console.log(reviewSummary);
   browser.close();
 };
 
@@ -58,13 +56,11 @@ const getGamespotReviewAndRating = async (url) => {
     const parsedReviewScript = Array.from(reviewRawScripts).map(
       (elem) => elem.textContent
     );
-    console.log(typeof parsedReviewScript);
     return {
       rating: parseInt(rating),
       reviewScript: parsedReviewScript,
     };
   });
-  console.log(reviewSummary);
   browser.close();
 };
 

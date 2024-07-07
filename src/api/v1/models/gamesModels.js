@@ -13,8 +13,8 @@ const gamesListSchema = new mongoose.Schema({
   reviews: [reviewDataSchema],
   dominantColor: String,
   screenShots: [[{ id: Number, image: String }]],
-  releaseDate: Number,
-  reviewSummary: reviewSummaryDataSchema,
+  releaseDate: String,
+  reviewSummary: [reviewSummaryDataSchema],
   tags: [
     {
       id: Number,
@@ -27,6 +27,6 @@ const gamesListSchema = new mongoose.Schema({
   ],
 });
 
-const Game = mongoose.model("Games", gamesListSchema);
+const GameModel = mongoose.model("Games", gamesListSchema);
 
-module.exports = Game;
+module.exports = GameModel;

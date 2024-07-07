@@ -5,7 +5,7 @@ const openai = new OpenAI({
 });
 
 const getSummaryResponse = async (reviews, prompt) => {
-  const reviewScripts = reviews.join(', ')
+  const reviewScripts = reviews.join(", ");
   try {
     const completion = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
@@ -18,7 +18,7 @@ const getSummaryResponse = async (reviews, prompt) => {
           role: "user",
           content:
             prompt ||
-            "Summarize the text into pros and cons, give this response as json with pros and cons as array ",
+            "Summarize the text into pros and cons, give this response as json with pros and cons as array, pros and cons key should all lowercase  ",
         },
       ],
       temperature: 1,
@@ -27,9 +27,7 @@ const getSummaryResponse = async (reviews, prompt) => {
       frequency_penalty: 0,
       presence_penalty: 0,
     });
-    console.log("completion", completion);
-    // const completion = {};
-    return completion?.choices?.[0]?.message?.content;
+    return JSON.parse(completion?.choices?.[0]?.message?.content);
   } catch (e) {
     console.log("ERROR", e);
   }
