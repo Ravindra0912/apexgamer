@@ -17,7 +17,7 @@ const fetchSteamReviews = (id, params = {}) => {
     url: `https://store.steampowered.com/appreviews/${id}`,
     params: {
       num_per_page: 50,
-      json: 1,
+      json: 10,
       ...params,
     },
   });

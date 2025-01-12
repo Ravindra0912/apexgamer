@@ -34,15 +34,12 @@ const getSteamId = async (id) => {
   return null;
 };
 
-
-
 const getGamesWithSummarizedReviews = async (games) => {
   let reviewSummaryPromises = [];
   games.forEach(async (gameItem, i) => {
     const reviewArray = gameItem.reviews.map((item) => {
       return item.reviewText;
     });
-    // return New Promise((res,))
     reviewSummaryPromises.push(
       reviewArray.length > 0
         ? getSummaryResponse(reviewArray)
@@ -61,9 +58,7 @@ const getGamesWithSummarizedReviews = async (games) => {
 const getFormattedResults = (results, popularGames) => {
   return results?.map((item, index) => {
     const currentGame = popularGames[index];
-
-    const data = item?.data;
-    const reviewsData = data?.reviews;
+    const reviewsData = currentGame?.reviews;
     let reviews = [];
     let reviewString = "";
     if (reviewsData?.length) {
@@ -77,6 +72,7 @@ const getFormattedResults = (results, popularGames) => {
       });
     }
     return {
+      ...currentGame,
       rId: currentGame?.id,
       rawRating: currentGame?.rating,
       steamId: getIdFromSteamUrl(item?.config?.url),
@@ -93,19 +89,22 @@ const getFormattedResults = (results, popularGames) => {
     };
   });
 };
+null;
 
-const getCurrentPopularGames = async () => {
-  const response = await getRawgData("games/lists/greatest", {
+const getCurrentPopularGames = async (count) => {
+  const response = await getRawgData("games", {
     discover: true,
     ordering: "-added",
-    page_size: 5,
+    page_size: count,
     page: 1,
   });
   const popularGames = response?.data?.results;
   const promises = popularGames.map(async (popularGame) => {
     const steamId = await getSteamId(popularGame?.id);
-    if (steamId) return fetchSteamReviews(steamId);
-    else return Promise.resolve({});
+    if (steamId) {
+      const response = await fetchSteamReviews(steamId);
+      popularGame.reviews = response.data.reviews;
+    } else return Promise.resolve({});
   });
   return Promise.all(promises)
     .then((results) => {
@@ -117,14 +116,51 @@ const getCurrentPopularGames = async () => {
     });
 };
 
+const saveData = async (games, index, t, res) => {  
+  if (index >= games.length || !games.length) {
+    clearTimeout(t); // Ensure no dangling timeouts
+    res("All Data Saved");
+    return;
+  }
+
+  const gamesWithSummary = await getGamesWithSummarizedReviews(games[index]);
+  const gameIds = gamesWithSummary.map((game) => game.rId);
+
+  const existingGames = await GameModel.find(
+    { rId: { $in: gameIds } },
+    { rId: 1 }
+  );
+
+  const existingGameIds = new Set(existingGames.map((game) => game.rId));
+  const newGames = gamesWithSummary.filter(
+    (game) => !existingGameIds.has(game.rId) // Fix `_rId` typo
+  );
+
+  if (newGames.length > 0) {
+    await GameModel.insertMany(newGames);
+  }
+
+  t = setTimeout(() => {
+    saveData(games, index + 1, t, res);
+  }, 5000);
+};
+
 const getLatestGamesAndSave = async (req, res) => {
   try {
-    const games = await getCurrentPopularGames();
-    const gamesWithSummary = await getGamesWithSummarizedReviews(games);
-    GameModel.insertMany(gamesWithSummary);
-    res.send(gamesWithSummary);
+    const { count } = req.body;
+    const games = await getCurrentPopularGames(count);
+
+    const gamesArray = Array.from({ length: count }, (_, i) => games.slice(i, i + 1));
+    const gamesArrayIndex = 0;
+
+    await new Promise((resolve) => {
+      saveData(gamesArray, gamesArrayIndex, undefined, resolve);
+    });
+
+    res.send("All games processed successfully");
   } catch (e) {
-    res.send(e);
+    console.error(e);
+    res.status(500).send(e);
   }
 };
 
@@ -135,7 +171,6 @@ const getAllGames = async (req, res) => {
   } catch (e) {
     console.log(e);
     res.send("falied");
-    // res.status()
   }
 };
 
@@ -148,4 +183,14 @@ const removeAllGames = async (req, res) => {
   }
 };
 
-module.exports = { getLatestGamesAndSave, getAllGames, removeAllGames };
+const getLatestGamesAndAppend = (req, res) => {
+  // try{
+  // }
+};
+
+module.exports = {
+  getLatestGamesAndSave,
+  getAllGames,
+  removeAllGames,
+  getLatestGamesAndAppend,
+};

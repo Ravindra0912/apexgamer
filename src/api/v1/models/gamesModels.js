@@ -10,6 +10,7 @@ const gamesListSchema = new mongoose.Schema({
   steamId: Number,
   ratings: [[{ metacritic: Number, rawg: Number }]],
   backgroundImage: String,
+  name: String,
   reviews: [reviewDataSchema],
   dominantColor: String,
   screenShots: [[{ id: Number, image: String }]],
