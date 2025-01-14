@@ -22,3 +22,13 @@ app.use(bodyParser.json());
 
 // Routes
 app.use("/games", gamesRouter);
+
+// Schedule the cron job to run once every 24 hours
+cron.schedule('0 0 * * *', async () => {
+  try {
+    console.log('Running cron job: getLatestGamesAndSave');
+    await getLatestGamesAndSave();
+  } catch (error) {
+    console.error('Error running cron job:', error);
+  }
+});
