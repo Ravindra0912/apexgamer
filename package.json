@@ -2,10 +2,10 @@
   "name": "apexgamer",
   "version": "1.0.0",
   "description": "",
-  "main": "src/app.js",
+  "main": "app.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "nodemon --env-file=.env --inspect src/app.js"
+    "start": "nodemon --env-file=.env --inspect app.js"
   },
   "author": "",
   "license": "ISC",
@@ -21,9 +21,6 @@
     "puppeteer": "^22.6.3"
   },
   "devDependencies": {
-    "@eslint/js": "^9.3.0",
-    "eslint": "^9.3.0",
-    "eslint-config-airbnb": "^19.0.4",
     "globals": "^15.3.0"
   }
 }
