@@ -5,6 +5,7 @@ var bodyParser = require('body-parser')
 
 const gamesRouter = require("./api/v1/routes/gamesRoutes");
 const { connectMongo } = require("./config/connection");
+const { getLatestGamesAndSave } = require("./api/v1/controller/gamesController");
 
 app.listen(port, () => {
   console.log(`Example app listening on port ${port}!`);
