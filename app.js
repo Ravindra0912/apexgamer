@@ -1,12 +1,11 @@
 const express = require("express");
 const app = express();
-const port = process.env.PORT;
+const port = 7000;
 var bodyParser = require('body-parser')
-const cron = require('node-cron');
 
 const gamesRouter = require("./api/v1/routes/gamesRoutes");
 const { connectMongo } = require("./config/connection");
-const { getLatestGamesAndSave } = require("./api/v1/controller/gamesController");
+require("./api/v1/workers/gamesWorker");
 
 app.listen(port, () => {
   console.log(`Example app listening on port ${port}!`);
@@ -25,12 +24,12 @@ app.use(bodyParser.json());
 // Routes
 app.use("/games", gamesRouter);
 
-// Schedule the cron job to run once every 24 hours
-cron.schedule('0 0 * * *', async () => {
-  try {
-    console.log('Running cron job: getLatestGamesAndSave');
-    await getLatestGamesAndSave();
-  } catch (error) {
-    console.error('Error running cron job:', error);
-  }
+
+const jobsRouter = require("./api/v1/routes/jobsRoutes");
+
+app.use("/jobs", jobsRouter);
+
+app.use((err, req, res, _next) => {
+  console.error(err);
+  res.status(500).json({ error: err.message || "Internal server error" });
 });
