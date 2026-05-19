@@ -1,6 +1,6 @@
-const { getSummaryResponse } = require("./openAiService");
-const { getRawgData } = require("./rawgService");
-const { fetchSteamReviews } = require("./steamService");
+const { getSummaryResponse } = require("../clients/openAiClient");
+const { getRawgData } = require("../clients/rawgClient");
+const { fetchSteamReviews } = require("../clients/steamClient");
 const GameModel = require("../models/gamesModels");
 const { formatSearchResults, getIdFromSteamUrl } = require("../helpers/index");
 

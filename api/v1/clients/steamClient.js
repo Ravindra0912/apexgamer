@@ -1,7 +1,7 @@
 const axios = require("axios");
 
 const fetchAllSteamGames = () => {
-  axios({
+  return axios({
     method: "get",
     url: `https://api.steampowered.com/ISteamApps/GetAppList/v0002`,
     params: {

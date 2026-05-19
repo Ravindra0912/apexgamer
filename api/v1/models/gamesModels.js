@@ -26,7 +26,7 @@ const gamesListSchema = new mongoose.Schema({
       image_background: String,
     },
   ],
-});
+}, {timestamps: true});
 
 const GameModel = mongoose.model("Games", gamesListSchema);
 

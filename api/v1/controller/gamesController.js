@@ -21,7 +21,18 @@ const getLatestGamesAndSave = async (req, res, next) => {
 
 const getAllGames = async (req, res, next) => {
   try {
-    const response = await GameModel.find({});
+    const limit = Math.max(1, parseInt(req.query.limit)) || 10;
+    const after = req.query.after || null;
+
+    const query = after ? {_id: {$gt:after}}: {}
+    const games = await GameModel.find(query).sort({updatedAt: -1, _id:-1}).limit(limit)
+    const last = games.at(-1);
+    const response = {
+      data: games,
+      paging: {
+        after: last?._id
+      }
+    }
     res.status(200).json(response);
   } catch (e) {
     next(e);
