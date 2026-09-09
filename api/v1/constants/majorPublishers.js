@@ -1,0 +1,27 @@
+const MAJOR_PUBLISHERS = [
+  "electronic arts",
+  "ea sports",
+  "ubisoft",
+  "activision",
+  "blizzard entertainment",
+  "take-two",
+  "2k",
+  "rockstar games",
+  "valve",
+  "konami",
+  "sony interactive entertainment",
+  "playstation",
+  "xbox game studios",
+  "microsoft studios",
+  "square enix",
+  "bethesda",
+  "zenimax",
+  "capcom",
+  "bandai namco",
+  "sega",
+  "warner bros",
+  "wb games",
+  "bungie",
+];
+
+module.exports = { MAJOR_PUBLISHERS };

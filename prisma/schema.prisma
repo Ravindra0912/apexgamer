@@ -1,0 +1,120 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+model Game {
+  id                  Int          @id @default(autoincrement())
+  rId                 Int          @unique
+  steamId             Int?
+  name                String?
+  backgroundImage     String?
+  dominantColor       String?
+  releaseDate         String?
+  ratingMetacritic    Float?
+  ratingRawg          Float?
+  pros                String[]
+  cons                String[]
+  addedCount          Int?
+  steamCcu            Int?
+  steamOwnersLabel    String?
+  steamPublisher      String?
+  igdbPopularity      Float?
+  trendingScore       Float?
+  popularityUpdatedAt DateTime?
+  category            GameCategory @default(UNCLASSIFIED)
+  reviews             Review[]
+  screenshots         Screenshot[]
+  tags                GameTag[]
+  videoGuides         VideoGuide[]
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@index([updatedAt, id])
+  @@index([trendingScore, id])
+  @@index([addedCount, id])
+}
+
+enum GameCategory {
+  AAA
+  INDIE
+  UNCLASSIFIED
+}
+
+model Review {
+  id               Int     @id @default(autoincrement())
+  gameId           Int
+  game             Game    @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  reviewText       String?
+  votesUp          Int?
+  recommendationId String?
+
+  @@index([gameId])
+}
+
+model Screenshot {
+  id       Int     @id @default(autoincrement())
+  gameId   Int
+  game     Game    @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  remoteId Int?
+  image    String?
+
+  @@index([gameId])
+}
+
+model Tag {
+  id              Int       @id
+  name            String?
+  slug            String?
+  language        String?
+  gamesCount      Int?
+  imageBackground String?
+  games           GameTag[]
+}
+
+model GameTag {
+  gameId Int
+  tagId  Int
+  game   Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  tag    Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([gameId, tagId])
+  @@index([tagId])
+}
+
+model VideoGuide {
+  id          Int      @id @default(autoincrement())
+  gameId      Int
+  game        Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  youtubeId   String   @unique
+  title       String
+  channelName String?
+  thumbnail   String?
+  category    VideoGuideCategory
+  // AI-generated blurb from the video's title/description only — never the
+  // transcript, so nothing here is a creator's spoken content reproduced.
+  aiSummary   String?
+  publishedAt DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([gameId])
+}
+
+enum VideoGuideCategory {
+  REVIEW
+  BEFORE_YOU_BUY
+  GAMEPLAY
+  NEW_PLAYER_GUIDE
+}
+
+
+

@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mockup-preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve", ".mockup-preview", "-l", "4321"],
+      "port": 4321
+    },
+    {
+      "name": "apexgamer-ui",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "apexgamer-ui"],
+      "port": 3000
+    },
+    {
+      "name": "apexgamer-backend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 7000
+    }
+  ]
+}

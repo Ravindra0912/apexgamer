@@ -1,3 +1,5 @@
+const { MAJOR_PUBLISHERS } = require("../constants/majorPublishers");
+
 const formatSearchResults = (data) => {
   return data;
 };
@@ -5,6 +7,30 @@ const formatSearchResults = (data) => {
 const integerRegex = /^-?\d+$/;
 
 const isIntegerNumber = (str) => integerRegex.test(str);
+
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// Matched on word boundaries rather than raw substrings: a publisher listed as
+// just "2K" has to match the "2k" entry, while "H2K" must not.
+const MAJOR_PUBLISHER_PATTERNS = MAJOR_PUBLISHERS.map(
+  (publisher) => new RegExp(`\\b${escapeRegex(publisher)}\\b`),
+);
+
+const isMajorPublisher = (publisherLabel) => {
+  const publishers = (publisherLabel || "").toLowerCase().split(",").map((p) => p.trim());
+  return publishers.some((publisher) =>
+    MAJOR_PUBLISHER_PATTERNS.some((pattern) => pattern.test(publisher)),
+  );
+};
+
+const classifyGameCategory = ({ genres, steamPublisher }) => {
+  const isIndieGenre = (genres || []).some((genre) => genre?.slug === "indie");
+  if (isIndieGenre) {
+    return "INDIE";
+  }
+
+  return isMajorPublisher(steamPublisher) ? "AAA" : "UNCLASSIFIED";
+};
 
 const getIdFromSteamUrl = (steamUrl) => {
   const splitUrl = steamUrl?.split("/");
@@ -20,4 +46,4 @@ const getIdFromSteamUrl = (steamUrl) => {
   return null;
 };
 
-module.exports = { formatSearchResults, getIdFromSteamUrl };
+module.exports = { formatSearchResults, getIdFromSteamUrl, classifyGameCategory };
