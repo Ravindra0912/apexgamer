@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Game, GameCategory, GamesPage, GameSort } from "@/lib/types";
 import GameCard from "./GameCard";
+import Spinner from "./Spinner";
 
 const PAGE_SIZE = 24;
 
@@ -59,8 +60,9 @@ export default function GamesGrid({
           <button
             onClick={loadMore}
             disabled={loading}
-            className="rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text transition-colors hover:bg-surface-hover disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text transition-colors hover:bg-surface-hover disabled:opacity-50"
           >
+            {loading && <Spinner />}
             {loading ? "Loading…" : "Load more"}
           </button>
         </div>

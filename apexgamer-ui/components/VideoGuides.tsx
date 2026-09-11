@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import { VideoGuide, VideoGuideCategory } from "@/lib/types";
+import Spinner from "./Spinner";
 
 const CATEGORY_ORDER: VideoGuideCategory[] = ["BEFORE_YOU_BUY", "REVIEW", "NEW_PLAYER_GUIDE", "GAMEPLAY"];
 
@@ -53,8 +54,9 @@ export default function VideoGuides({
         <button
           onClick={refresh}
           disabled={loading}
-          className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-text-dim transition-colors hover:bg-surface-hover hover:text-text disabled:opacity-50"
+          className="flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-text-dim transition-colors hover:bg-surface-hover hover:text-text disabled:opacity-50"
         >
+          {loading && <Spinner className="h-3 w-3" />}
           {loading ? "Searching…" : videos.length ? "Refresh" : "Find videos"}
         </button>
       </div>

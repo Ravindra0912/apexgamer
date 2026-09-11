@@ -29,8 +29,14 @@ export default async function HomePage({
       <p className="mb-7 text-sm text-text-dim">
         Browse tracked games. Click a card for full details.
       </p>
-      <FilterBar sort={sort} category={category} />
-      <GamesGrid key={`${sort}-${category}`} initialPage={initialPage} sort={sort} category={category} />
+      <div className="group">
+        <FilterBar sort={sort} category={category} />
+        {/* Dim stale results while a filter change loads; FilterBar exposes
+            its pending state via a data-pending attribute. */}
+        <div className="transition-opacity group-has-data-pending:pointer-events-none group-has-data-pending:opacity-50">
+          <GamesGrid key={`${sort}-${category}`} initialPage={initialPage} sort={sort} category={category} />
+        </div>
+      </div>
     </main>
   );
 }
