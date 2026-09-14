@@ -1,9 +1,15 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Game } from "@/lib/types";
-import { initials } from "@/lib/utils";
+import { initials, summarizePlatforms } from "@/lib/utils";
+
+const MAX_PLATFORM_CHIPS = 4;
 
 export default function GameCard({ game }: { game: Game }) {
+  const platforms = summarizePlatforms(game.platforms ?? []);
+  const shownPlatforms = platforms.slice(0, MAX_PLATFORM_CHIPS);
+  const hiddenPlatformCount = platforms.length - shownPlatforms.length;
+
   return (
     <Link
       href={`/games/${game.id}`}
@@ -38,6 +44,24 @@ export default function GameCard({ game }: { game: Game }) {
           <span>{game.releaseDate ?? "Unknown date"}</span>
           {game.ratingRawg != null && <span>RAWG {game.ratingRawg}</span>}
         </div>
+        {shownPlatforms.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5" title={game.platforms?.join(", ")}>
+            {shownPlatforms.map((platform) => (
+              <span
+                key={platform}
+                className="rounded border border-border px-1.5 py-0.5 text-[0.66rem] font-semibold uppercase tracking-wide text-text-dim"
+              >
+                {platform}
+              </span>
+            ))}
+            {hiddenPlatformCount > 0 && (
+              <span className="px-0.5 py-0.5 text-[0.66rem] font-semibold text-text-dim">
+                +{hiddenPlatformCount}
+              </span>
+            )}
+          </div>
+        )}
+
         <div className="flex flex-wrap gap-1.5">
           {game.tags.slice(0, 3).map((tag) => (
             <span
