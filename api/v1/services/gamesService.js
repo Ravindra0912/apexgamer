@@ -1,6 +1,7 @@
 const { getSummaryResponse, getTextSummary } = require("../clients/geminiClient");
 const { getRawgData } = require("../clients/rawgClient");
 const {
+  fetchSteamAppDetails,
   fetchSteamReviews,
   fetchSteamSpyAppDetails,
   fetchSteamSpyTop100InTwoWeeks,
@@ -14,7 +15,13 @@ const {
 } = require("../clients/igdbClient");
 const { searchVideos } = require("../clients/youtubeClient");
 const gamesRepository = require("../repositories/gamesRepository");
-const { formatSearchResults, getIdFromSteamUrl, classifyGameCategory } = require("../helpers/index");
+const {
+  formatSearchResults,
+  getIdFromSteamUrl,
+  classifyGameCategory,
+  parseSteamRequirements,
+  getPlatformNames,
+} = require("../helpers/index");
 
 const RAWG_STEAM_STORE_ID = 1;
 
@@ -52,6 +59,22 @@ const getSteamId = async (id, name) => {
     return getIdFromSteamUrl(steamUrl);
   }
   return findSteamIdByName(name);
+};
+
+// Steam's appdetails response is keyed by the appid it was asked for, and
+// reports per-app failure via `success` rather than an HTTP error — an unknown
+// or delisted appid comes back 200 with success:false.
+const getSteamRequirements = async (steamId) => {
+  if (!steamId) return null;
+  try {
+    const response = await fetchSteamAppDetails(steamId);
+    const entry = response?.data?.[String(steamId)];
+    if (!entry?.success) return null;
+    return parseSteamRequirements(entry.data);
+  } catch (e) {
+    console.error("Failed to fetch Steam requirements for", steamId, "Error:", e.message);
+    return null;
+  }
 };
 
 const getGamesWithSummarizedReviews = async (games) => {
@@ -94,6 +117,9 @@ const getFormattedResults = (results, popularGames) => {
       addedCount: currentGame?.added ?? null,
       steamOwnersLabel: item?.steamOwnersLabel ?? null,
       steamPublisher: item?.steamPublisher ?? null,
+      platforms: getPlatformNames(currentGame),
+      systemRequirements: item?.systemRequirements ?? null,
+      requirementsUpdatedAt: new Date(),
       category: classifyGameCategory({
         genres: currentGame?.genres,
         steamPublisher: item?.steamPublisher,
@@ -161,16 +187,19 @@ const enrichAndFormatGames = async (rawgGames) => {
     const steamId = await getSteamId(rawgGame?.id, rawgGame?.name);
     let steamOwnersLabel = null;
     let steamPublisher = null;
+    let systemRequirements = null;
     if (steamId) {
-      const [reviewResponse, steamSpyResponse] = await Promise.all([
+      const [reviewResponse, steamSpyResponse, requirements] = await Promise.all([
         fetchSteamReviews(steamId),
         fetchSteamSpyAppDetails(steamId).catch(() => null),
+        getSteamRequirements(steamId),
       ]);
       rawgGame.reviews = reviewResponse.data.reviews;
       steamOwnersLabel = steamSpyResponse?.data?.owners ?? null;
       steamPublisher = steamSpyResponse?.data?.publisher ?? null;
+      systemRequirements = requirements;
     }
-    return { steamId, steamOwnersLabel, steamPublisher };
+    return { steamId, steamOwnersLabel, steamPublisher, systemRequirements };
   });
   return Promise.all(promises)
     .then((results) => getFormattedResults(results, rawgGames))
@@ -418,9 +447,36 @@ const refreshVideoGuidesForGame = async (gameId) => {
   return gamesRepository.createVideoGuides(gameId, videosToCreate);
 };
 
+// Backfills platforms + requirements for a game that predates those columns.
+// Platforms come from RAWG (the only source here that knows about consoles)
+// and requirements from Steam, so a game missing one can still get the other.
+const refreshSystemRequirementsForGame = async (gameId) => {
+  const game = await gamesRepository.findGameById(gameId);
+  if (!game) return null;
+
+  let platforms = game.platforms || [];
+  try {
+    const response = await getRawgData(`games/${game.rId}`);
+    const fetched = getPlatformNames(response?.data);
+    if (fetched.length) platforms = fetched;
+  } catch (e) {
+    console.error("Failed to fetch RAWG platforms for", game.name, "Error:", e.message);
+  }
+
+  const steamId = game.steamId ?? (await getSteamId(game.rId, game.name));
+  const systemRequirements = await getSteamRequirements(steamId);
+
+  return gamesRepository.updateSystemRequirements(gameId, {
+    steamId: steamId ? Number(steamId) : null,
+    platforms,
+    systemRequirements,
+  });
+};
+
 module.exports = {
   getSearchResults,
   getSteamId,
+  refreshSystemRequirementsForGame,
   fetchAndSaveLatestGames,
   fetchAndSaveRecentGames,
   refreshTrendingScores,

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { fetchGameById, fetchVideoGuides } from "@/lib/api";
 import { stripBBCode } from "@/lib/utils";
 import VideoGuides from "@/components/VideoGuides";
+import SystemRequirements from "@/components/SystemRequirements";
 
 export default async function GameDetailsPage({ params }: PageProps<"/games/[id]">) {
   const { id } = await params;
@@ -109,6 +110,11 @@ export default async function GameDetailsPage({ params }: PageProps<"/games/[id]
               </div>
             </section>
           )}
+
+          <SystemRequirements
+            platforms={game.platforms ?? []}
+            requirements={game.systemRequirements ?? null}
+          />
 
           <VideoGuides gameId={game.id} initialVideos={videoGuides} />
 

@@ -1,3 +1,4 @@
+const { Prisma } = require("@prisma/client");
 const prisma = require("../../../config/prismaClient");
 
 const findExistingRIds = async (rIds) => {
@@ -24,6 +25,9 @@ const createGame = async (game) => {
     steamOwnersLabel,
     steamPublisher,
     category,
+    platforms,
+    systemRequirements,
+    requirementsUpdatedAt,
     reviews,
     screenshots,
     tags,
@@ -47,6 +51,9 @@ const createGame = async (game) => {
       steamOwnersLabel,
       steamPublisher,
       category,
+      platforms: platforms || [],
+      systemRequirements: systemRequirements ?? undefined,
+      requirementsUpdatedAt,
       createdAt,
       updatedAt,
       reviews: reviews?.length ? { create: reviews } : undefined,
@@ -198,6 +205,34 @@ const updateTrendingData = async (updates) => {
   );
 };
 
+// requirementsUpdatedAt is stamped even when Steam returned nothing, so the
+// backfill can skip games it has already checked instead of re-querying them
+// on every run.
+const updateSystemRequirements = async (gameId, { steamId, platforms, systemRequirements }) => {
+  return prisma.game.update({
+    where: { id: gameId },
+    data: {
+      steamId: steamId ?? undefined,
+      platforms: platforms || [],
+      systemRequirements: systemRequirements ?? Prisma.DbNull,
+      requirementsUpdatedAt: new Date(),
+    },
+  });
+};
+
+const findGamesNeedingRequirements = async (limit) => {
+  return prisma.game.findMany({
+    where: { requirementsUpdatedAt: null },
+    select: { id: true, name: true },
+    orderBy: { id: "asc" },
+    take: limit,
+  });
+};
+
+const countGamesNeedingRequirements = async () => {
+  return prisma.game.count({ where: { requirementsUpdatedAt: null } });
+};
+
 const deleteAllGames = async () => {
   await prisma.game.deleteMany({});
 };
@@ -237,6 +272,9 @@ module.exports = {
   findGamesPaginated,
   findGamesWithSteamId,
   updateTrendingData,
+  updateSystemRequirements,
+  findGamesNeedingRequirements,
+  countGamesNeedingRequirements,
   deleteAllGames,
   findGameById,
   findVideoGuidesByGameId,

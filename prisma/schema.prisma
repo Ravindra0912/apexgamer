@@ -32,6 +32,16 @@ model Game {
   trendingScore       Float?
   popularityUpdatedAt DateTime?
   category            GameCategory @default(UNCLASSIFIED)
+  // RAWG platform names (PC, PlayStation 5, Nintendo Switch, ...) — the only
+  // source here that covers consoles, since Steam only knows its own three.
+  platforms           String[]
+  // Parsed out of Steam's requirements HTML at ingest rather than stored raw,
+  // so rendering never has to trust third-party markup:
+  // { windows: { minimum: [{ label, value }], recommended: [...] }, mac, linux }
+  systemRequirements  Json?
+  // Set on every completed lookup, including ones that found nothing, so the
+  // backfill can tell "not checked yet" from "checked, Steam had no data".
+  requirementsUpdatedAt DateTime?
   reviews             Review[]
   screenshots         Screenshot[]
   tags                GameTag[]

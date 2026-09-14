@@ -40,6 +40,21 @@ export type VideoGuide = {
   createdAt: string;
 };
 
+// One "Memory: 8 GB RAM" line from a Steam requirements list. `label` is null
+// for unlabelled notes such as "Requires a 64-bit processor and operating system".
+export type RequirementRow = {
+  label: string | null;
+  value: string;
+};
+
+export type RequirementTier = {
+  minimum?: RequirementRow[];
+  recommended?: RequirementRow[];
+};
+
+// Only the OSes a game actually ships on are present.
+export type SystemRequirements = Partial<Record<"windows" | "mac" | "linux", RequirementTier>>;
+
 export type Game = {
   id: number;
   rId: number;
@@ -58,6 +73,8 @@ export type Game = {
   igdbPopularity: number | null;
   trendingScore: number | null;
   category: GameCategory;
+  platforms: string[];
+  systemRequirements: SystemRequirements | null;
   createdAt: string;
   updatedAt: string;
   reviews: Review[];

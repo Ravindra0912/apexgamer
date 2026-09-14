@@ -25,6 +25,17 @@ const fetchSteamReviews = (id, params = {}) => {
   });
 };
 
+// Storefront app details — the source for system requirements and which of
+// Steam's three platforms a game actually ships on. Unofficial and rate
+// limited (roughly 200 requests per 5 minutes), so callers that walk the whole
+// catalog need to pace themselves.
+const fetchSteamAppDetails = (appid) =>
+  axios({
+    method: "get",
+    url: "https://store.steampowered.com/api/appdetails",
+    params: { appids: appid, cc: "us", l: "en" },
+  });
+
 const fetchSteamSpyTop100InTwoWeeks = () =>
   axios({
     method: "get",
@@ -41,6 +52,7 @@ const fetchSteamSpyAppDetails = (appid) =>
 
 module.exports = {
   searchSteamStore,
+  fetchSteamAppDetails,
   fetchSteamReviews,
   fetchSteamSpyTop100InTwoWeeks,
   fetchSteamSpyAppDetails,
