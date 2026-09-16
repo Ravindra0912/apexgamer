@@ -1,0 +1,78 @@
+name: Daily catalog pipeline
+
+# Adds new games and refreshes every game's data (RAWG metadata, Steam
+# reviews, video guides, viewer comments, trending scores). Runs here rather
+# than on Render: Render's free web service spins down after 15 minutes
+# without traffic, so a schedule inside the app would never fire.
+
+on:
+  schedule:
+    # 08:17 UTC is just after YouTube's quota resets at midnight Pacific
+    # (07:00 UTC in summer, 08:00 in winter), so each run starts with a full
+    # day's quota. Off the top of the hour, when GitHub delays scheduled runs
+    # most.
+    - cron: "17 8 * * *"
+  workflow_dispatch:
+    inputs:
+      new_games:
+        description: "Number of new games to try adding"
+        default: "10"
+      only:
+        description: "Comma-separated stages to run (blank runs all)"
+        default: ""
+
+# Never two runs at once; a manual run started during a scheduled one waits.
+concurrency:
+  group: daily-pipeline
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      # Repository secrets. This repo is public, so logs are public too — the
+      # pipeline never prints these, and GitHub masks them if anything did.
+      # DATABASE_URL must NOT include channel_binding=require: Prisma's
+      # migrate CLI can't connect with it (P1001), though the app can.
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      RAWG_API_KEY: ${{ secrets.RAWG_API_KEY }}
+      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      IGDB_CLIENT_ID: ${{ secrets.IGDB_CLIENT_ID }}
+      IGDB_CLIENT_SECRET: ${{ secrets.IGDB_CLIENT_SECRET }}
+      # puppeteer is a dependency but unused by the pipeline; skip its
+      # ~170 MB Chromium download on every run.
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Render also migrates on deploy, but this run may start before a new
+      # deploy finishes, so it brings the schema up to date itself.
+      - name: Apply database migrations
+        run: npx prisma migrate deploy
+
+      - name: Run pipeline
+        # Inputs are passed through env, never interpolated into the script,
+        # so a crafted input can't inject shell commands.
+        env:
+          NEW_GAMES: ${{ inputs.new_games || '10' }}
+          ONLY_STAGES: ${{ inputs.only }}
+        run: |
+          args=(--new-games="$NEW_GAMES")
+          if [ -n "$ONLY_STAGES" ]; then
+            args+=(--only="$ONLY_STAGES")
+          fi
+          node scripts/daily-pipeline.js "${args[@]}"

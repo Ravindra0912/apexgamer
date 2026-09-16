@@ -9,6 +9,32 @@ const findExistingRIds = async (rIds) => {
   return existing.map((game) => game.rId);
 };
 
+// rIds discovery should not offer again: games already stored, plus RAWG
+// entries deliberately passed over (e.g. duplicate listings of a stored game).
+const findKnownRIds = async (rIds) => {
+  const [stored, ignored] = await Promise.all([
+    findExistingRIds(rIds),
+    prisma.ignoredRawgGame.findMany({ where: { rId: { in: rIds } }, select: { rId: true } }),
+  ]);
+  return [...stored, ...ignored.map((entry) => entry.rId)];
+};
+
+const ignoreRawgGame = async ({ rId, name, reason, steamId }) => {
+  await prisma.ignoredRawgGame.upsert({
+    where: { rId },
+    create: { rId, name, reason, steamId },
+    update: { name, reason, steamId },
+  });
+};
+
+const findExistingSteamIds = async (steamIds) => {
+  const existing = await prisma.game.findMany({
+    where: { steamId: { in: steamIds } },
+    select: { steamId: true },
+  });
+  return existing.map((game) => game.steamId);
+};
+
 const createGame = async (game) => {
   const {
     rId,
@@ -28,6 +54,8 @@ const createGame = async (game) => {
     platforms,
     systemRequirements,
     requirementsUpdatedAt,
+    rawgSyncedAt,
+    steamReviewsSyncedAt,
     reviews,
     screenshots,
     tags,
@@ -54,6 +82,8 @@ const createGame = async (game) => {
       platforms: platforms || [],
       systemRequirements: systemRequirements ?? undefined,
       requirementsUpdatedAt,
+      rawgSyncedAt,
+      steamReviewsSyncedAt,
       createdAt,
       updatedAt,
       reviews: reviews?.length ? { create: reviews } : undefined,
@@ -331,6 +361,9 @@ const createVideoGuides = async (gameId, videos) => {
 
 module.exports = {
   findExistingRIds,
+  findKnownRIds,
+  ignoreRawgGame,
+  findExistingSteamIds,
   createGame,
   createGames,
   backfillGameContent,

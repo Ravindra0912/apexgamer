@@ -22,6 +22,7 @@ const {
   parseSteamRequirements,
   getPlatformNames,
   rejectCommentByRules,
+  decodeEntities,
 } = require("../helpers/index");
 
 const RAWG_STEAM_STORE_ID = 1;
@@ -112,7 +113,9 @@ const getFormattedResults = (results, popularGames) => {
       name: currentGame?.name,
       backgroundImage: currentGame?.background_image,
       dominantColor: currentGame?.dominant_color,
-      releaseDate: currentGame?.released,
+      // RAWG gives undated games a year-end placeholder (The Wolf Among Us 2
+      // was stored as 2025-12-31 while unannounced), so "tba" wins over it.
+      releaseDate: currentGame?.tba ? null : currentGame?.released,
       ratingMetacritic: currentGame?.metacritic ?? null,
       ratingRawg: currentGame?.rating ?? null,
       addedCount: currentGame?.added ?? null,
@@ -167,7 +170,7 @@ const getNewGamesFromRawg = async (count, rawgParams) => {
     if (!pageResults.length) break;
 
     const existingRIds = new Set(
-      await gamesRepository.findExistingRIds(pageResults.map((game) => game.id)),
+      await gamesRepository.findKnownRIds(pageResults.map((game) => game.id)),
     );
     const newOnPage = pageResults.filter((game) => !existingRIds.has(game.id));
 
@@ -410,9 +413,11 @@ const refreshVideoGuidesForGame = async (gameId, categories) => {
       candidates.push({
         category,
         youtubeId: item.id.videoId,
-        title: item.snippet?.title || "",
-        description: item.snippet?.description || "",
-        channelName: item.snippet?.channelTitle || null,
+        // Search results come back HTML-escaped ("Sword&#39;s"), which would
+        // otherwise be stored and displayed literally.
+        title: decodeEntities(item.snippet?.title || ""),
+        description: decodeEntities(item.snippet?.description || ""),
+        channelName: item.snippet?.channelTitle ? decodeEntities(item.snippet.channelTitle) : null,
         thumbnail: item.snippet?.thumbnails?.medium?.url || item.snippet?.thumbnails?.default?.url || null,
         publishedAt: item.snippet?.publishedAt ? new Date(item.snippet.publishedAt) : null,
       });
@@ -772,9 +777,91 @@ const refreshSystemRequirementsForGame = async (gameId) => {
   });
 };
 
+// Adds one game with everything the batch ingest produces (Steam id, reviews,
+// AI pros/cons, publisher/category, platforms, requirements), for the daily
+// pipeline. Unlike the batch path it handles one game at a time, so a single
+// failing Steam call can't take down its neighbours, and nothing is swallowed.
+//
+// Duplicate check runs right after the Steam id lookup, before any paid call:
+// RAWG sometimes carries two entries for one game ("MОUSE" with a Cyrillic О
+// alongside "MOUSE: P.I. For Hire", "Mixtape" alongside "Mixtape (2025)"),
+// which rId-only dedup lets through. `claimedSteamIds` also catches two such
+// entries arriving in the same run.
+//
+// steamReviewsSyncedAt is only stamped when the pros/cons summary actually
+// succeeded (or there was nothing to summarize), so a Gemini failure leaves
+// the game queued for the review-refresh stage instead of silently empty.
+const ingestGame = async (rawgGame, claimedSteamIds = new Set()) => {
+  const rawSteamId = await getSteamId(rawgGame?.id, rawgGame?.name);
+  const steamId = rawSteamId ? Number(rawSteamId) : null;
+
+  if (steamId) {
+    const alreadyStored = (await gamesRepository.findExistingSteamIds([steamId])).length > 0;
+    if (alreadyStored || claimedSteamIds.has(steamId)) {
+      // Remembered so discovery doesn't offer this entry again tomorrow.
+      await gamesRepository.ignoreRawgGame({
+        rId: rawgGame.id,
+        name: rawgGame.name,
+        reason: "duplicate_steam_id",
+        steamId,
+      });
+      return { status: "duplicate", steamId };
+    }
+    claimedSteamIds.add(steamId);
+  }
+
+  let steamOwnersLabel = null;
+  let steamPublisher = null;
+  let systemRequirements = null;
+  rawgGame.reviews = [];
+  if (steamId) {
+    const [reviewResponse, steamSpyResponse, requirements] = await Promise.all([
+      fetchSteamReviews(steamId),
+      fetchSteamSpyAppDetails(steamId).catch(() => null),
+      getSteamRequirements(steamId),
+    ]);
+    rawgGame.reviews = reviewResponse?.data?.reviews || [];
+    steamOwnersLabel = steamSpyResponse?.data?.owners ?? null;
+    steamPublisher = steamSpyResponse?.data?.publisher ?? null;
+    systemRequirements = requirements;
+  }
+
+  const [formatted] = getFormattedResults(
+    [{ steamId, steamOwnersLabel, steamPublisher, systemRequirements }],
+    [rawgGame],
+  );
+
+  const reviewTexts = formatted.reviews.map((review) => review.reviewText).filter(Boolean);
+  let pros = [];
+  let cons = [];
+  let summarized = reviewTexts.length === 0;
+  if (reviewTexts.length) {
+    try {
+      ({ pros, cons } = await getSummaryResponse(reviewTexts));
+      summarized = true;
+    } catch (e) {
+      console.error("Failed to summarize reviews for", formatted.name, "Error:", e.message);
+    }
+  }
+
+  const now = new Date();
+  const game = await gamesRepository.createGame({
+    ...formatted,
+    pros,
+    cons,
+    rawgSyncedAt: now,
+    steamReviewsSyncedAt: summarized ? now : null,
+  });
+
+  return { status: "added", game, summarized };
+};
+
 module.exports = {
   getSearchResults,
   getSteamId,
+  getNewGamesFromRawg,
+  getSteamRequirements,
+  ingestGame,
   refreshSystemRequirementsForGame,
   fetchAndSaveLatestGames,
   fetchAndSaveRecentGames,

@@ -51,6 +51,15 @@ model Game {
   // to summarize — YouTube API data may only be kept ~30 days before it must
   // be refreshed, so this drives the refresh script's staleness check.
   reviewCommentsUpdatedAt DateTime?
+  // Daily pipeline bookkeeping. Each stage selects its work from these, so a
+  // new game flows through every stage on its own, an interrupted run resumes
+  // the next day, and an old game missing a feature gets backfilled by the
+  // same code. Null means "never done".
+  rawgSyncedAt         DateTime?
+  steamReviewsSyncedAt DateTime?
+  // Stamped on every gap-fill attempt, so a game whose search genuinely finds
+  // nothing for a category isn't re-searched (100 quota units) every day.
+  videoGuidesCheckedAt DateTime?
   reviews             Review[]
   screenshots         Screenshot[]
   tags                GameTag[]
@@ -124,6 +133,9 @@ model VideoGuide {
   aiSummary   String?
   publishedAt DateTime?
   createdAt   DateTime @default(now())
+  // YouTube API data may only be kept ~30 days before it's refreshed; the
+  // pipeline re-reads title/channel/thumbnail when this goes stale.
+  metadataRefreshedAt DateTime?
   comments    VideoComment[]
 
   @@index([gameId])
@@ -151,6 +163,38 @@ model VideoComment {
   fetchedAt        DateTime   @default(now())
 
   @@index([videoGuideId])
+}
+
+// RAWG entries the pipeline decided not to add, so discovery stops offering
+// them. Without this, a duplicate entry ranked high in RAWG ("MОUSE" with a
+// Cyrillic О, a second listing of "MOUSE: P.I. For Hire") would be fetched,
+// recognised by its Steam id and skipped again every day, taking one of the
+// day's new-game slots each time.
+model IgnoredRawgGame {
+  rId       Int      @id
+  name      String?
+  reason    String
+  steamId   Int?
+  createdAt DateTime @default(now())
+}
+
+// One row per daily pipeline run: what each stage did and what went wrong,
+// so a run's outcome can be checked without digging through CI logs.
+model PipelineRun {
+  id         Int               @id @default(autoincrement())
+  startedAt  DateTime          @default(now())
+  finishedAt DateTime?
+  status     PipelineRunStatus @default(RUNNING)
+  // { [stage]: { ...counts, durationMs, error? } }
+  stats      Json?
+  youtubeUnitsUsed Int         @default(0)
+}
+
+enum PipelineRunStatus {
+  RUNNING
+  SUCCEEDED
+  PARTIAL
+  FAILED
 }
 
 enum CommentStance {
