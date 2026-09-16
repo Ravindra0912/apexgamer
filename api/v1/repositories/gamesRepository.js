@@ -256,6 +256,17 @@ const findExistingYoutubeIds = async (youtubeIds) => {
   return existing.map((video) => video.youtubeId);
 };
 
+const findVideoGuidesMissingSummary = async () => {
+  return prisma.videoGuide.findMany({
+    where: { aiSummary: null },
+    select: { id: true, youtubeId: true, title: true },
+  });
+};
+
+const updateVideoGuideSummary = async (id, aiSummary) => {
+  return prisma.videoGuide.update({ where: { id }, data: { aiSummary } });
+};
+
 const createVideoGuides = async (gameId, videos) => {
   if (!videos.length) return [];
   await prisma.videoGuide.createMany({
@@ -279,6 +290,8 @@ module.exports = {
   findGameById,
   findVideoGuidesByGameId,
   findExistingYoutubeIds,
+  findVideoGuidesMissingSummary,
+  updateVideoGuideSummary,
   createVideoGuides,
   SORT_FIELDS,
 };

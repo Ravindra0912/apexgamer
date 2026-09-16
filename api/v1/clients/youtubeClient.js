@@ -17,6 +17,21 @@ const searchVideos = (query, maxResults = 5) =>
     },
   });
 
+// Fetches snippets for videos already known by id. Costs 1 quota unit per
+// call regardless of how many ids are passed (max 50), versus 100 for a
+// search — so re-reading metadata for stored videos is effectively free.
+const fetchVideoDetails = (videoIds) =>
+  axios({
+    method: "get",
+    url: "https://www.googleapis.com/youtube/v3/videos",
+    params: {
+      key: process.env.YOUTUBE_API_KEY,
+      part: "snippet",
+      id: videoIds.join(","),
+    },
+  });
+
 module.exports = {
   searchVideos,
+  fetchVideoDetails,
 };

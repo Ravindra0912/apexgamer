@@ -13,7 +13,7 @@ const {
   getPopularityPrimitives,
   EXTERNAL_GAME_SOURCE_STEAM,
 } = require("../clients/igdbClient");
-const { searchVideos } = require("../clients/youtubeClient");
+const { searchVideos, fetchVideoDetails } = require("../clients/youtubeClient");
 const gamesRepository = require("../repositories/gamesRepository");
 const {
   formatSearchResults,
@@ -390,12 +390,19 @@ const summarizeVideo = async (video) => {
 // against what's already stored (youtubeId is unique across the whole
 // table), summarizes only the new ones, and persists. Kept separate from any
 // GET so page views never silently spend YouTube quota.
-const refreshVideoGuidesForGame = async (gameId) => {
+// `categories` narrows which searches run — each one costs 100 YouTube quota
+// units, so dropping one is the lever for fitting more games into a day.
+// Omitted means all four.
+const refreshVideoGuidesForGame = async (gameId, categories) => {
   const game = await gamesRepository.findGameById(gameId);
   if (!game?.name) return [];
 
+  const queries = categories?.length
+    ? VIDEO_SEARCH_QUERIES.filter((query) => categories.includes(query.category))
+    : VIDEO_SEARCH_QUERIES;
+
   const candidates = [];
-  for (const { category, suffix } of VIDEO_SEARCH_QUERIES) {
+  for (const { category, suffix } of queries) {
     const response = await searchVideos(`${game.name} ${suffix}`, VIDEOS_PER_CATEGORY);
     (response?.data?.items || []).forEach((item) => {
       if (!item?.id?.videoId) return;
@@ -447,6 +454,48 @@ const refreshVideoGuidesForGame = async (gameId) => {
   return gamesRepository.createVideoGuides(gameId, videosToCreate);
 };
 
+// Repairs guides whose summary generation failed at ingest (a Gemini hiccup
+// leaves the video stored with a null aiSummary). Descriptions aren't
+// persisted, so they're re-read via videos.list — 1 quota unit per batch of
+// 50, versus the 100 a search would cost.
+const YOUTUBE_DETAILS_BATCH = 50;
+
+const backfillVideoSummaries = async () => {
+  const guides = await gamesRepository.findVideoGuidesMissingSummary();
+  if (!guides.length) return { total: 0, updated: 0, failed: 0 };
+
+  const snippetById = new Map();
+  for (let i = 0; i < guides.length; i += YOUTUBE_DETAILS_BATCH) {
+    const batch = guides.slice(i, i + YOUTUBE_DETAILS_BATCH);
+    const response = await fetchVideoDetails(batch.map((guide) => guide.youtubeId));
+    (response?.data?.items || []).forEach((item) => {
+      if (item?.id) snippetById.set(item.id, item.snippet || {});
+    });
+  }
+
+  let updated = 0;
+  let failed = 0;
+  for (const guide of guides) {
+    const snippet = snippetById.get(guide.youtubeId);
+    // A video pulled or made private since ingest returns no snippet; fall
+    // back to the stored title rather than skipping the row entirely.
+    const summary = await summarizeVideo({
+      title: snippet?.title || guide.title,
+      description: snippet?.description || "",
+    });
+    if (summary) {
+      await gamesRepository.updateVideoGuideSummary(guide.id, summary);
+      updated++;
+      console.log(`✔ ${guide.title.slice(0, 60)}`);
+    } else {
+      failed++;
+      console.error(`✘ ${guide.title.slice(0, 60)}`);
+    }
+  }
+
+  return { total: guides.length, updated, failed };
+};
+
 // Backfills platforms + requirements for a game that predates those columns.
 // Platforms come from RAWG (the only source here that knows about consoles)
 // and requirements from Steam, so a game missing one can still get the other.
@@ -481,4 +530,5 @@ module.exports = {
   fetchAndSaveRecentGames,
   refreshTrendingScores,
   refreshVideoGuidesForGame,
+  backfillVideoSummaries,
 };
