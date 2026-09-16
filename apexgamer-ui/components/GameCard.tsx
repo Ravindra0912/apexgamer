@@ -41,7 +41,8 @@ export default function GameCard({ game }: { game: Game }) {
       <div className="px-4 pt-3.5 pb-4">
         <h3 className="mb-1.5 truncate text-[0.98rem] font-semibold">{game.name ?? "Untitled"}</h3>
         <div className="mb-2.5 flex items-center justify-between text-xs text-text-dim">
-          <span>{game.releaseDate ?? "Unknown date"}</span>
+          {/* A null date means RAWG marks the game "to be announced". */}
+          <span>{game.releaseDate ?? "TBA"}</span>
           {game.ratingRawg != null && <span>RAWG {game.ratingRawg}</span>}
         </div>
         {shownPlatforms.length > 0 && (

@@ -241,11 +241,10 @@ const findGameById = async (id) => {
   return prisma.game.findUnique({ where: { id } });
 };
 
-// Top comments per video only — the page shows three, and every stored comment
-// already passed the opinion filter, so specificity then likes is the whole
-// ranking.
-const TOP_COMMENTS_PER_VIDEO = 3;
-
+// Every stored comment already passed the opinion filter, so all of them are
+// returned and the page reveals them progressively. Worst case in the current
+// catalog is 192 comments for a game (~240 chars each), which is fine to send
+// in one response. Ranked specificity first, then likes.
 const findVideoGuidesByGameId = async (gameId) => {
   return prisma.videoGuide.findMany({
     where: { gameId },
@@ -253,7 +252,6 @@ const findVideoGuidesByGameId = async (gameId) => {
     include: {
       comments: {
         orderBy: [{ specificity: "desc" }, { likeCount: "desc" }],
-        take: TOP_COMMENTS_PER_VIDEO,
       },
     },
   });

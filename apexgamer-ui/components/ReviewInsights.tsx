@@ -67,25 +67,42 @@ function PointList({ title, points, className }: { title: string; points: string
   );
 }
 
-// Collapsed by default so the video grid stays scannable. Comment text is
-// rendered as a plain text node — never as HTML — since it's third-party input.
+// A video can carry 80+ filtered comments, so the list opens with the best few
+// and grows in steps instead of dumping everything at once.
+const INITIAL_COMMENTS = 3;
+const COMMENTS_PER_STEP = 10;
+
+// Collapsed by default so the video grid stays scannable. Comments arrive
+// already ranked (specificity, then likes). Text is rendered as a plain text
+// node — never as HTML — since it's third-party input.
 export function TopComments({ youtubeId, comments }: { youtubeId: string; comments: VideoComment[] }) {
   const [open, setOpen] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_COMMENTS);
   if (!comments.length) return null;
+
+  const toggle = () => {
+    setOpen((value) => !value);
+    // Re-opening starts from the top few again rather than a long expanded list.
+    setVisibleCount(INITIAL_COMMENTS);
+  };
+
+  const visible = comments.slice(0, visibleCount);
+  const remaining = comments.length - visible.length;
 
   return (
     <div className="border-t border-border px-3 pb-3 pt-2">
       <button
-        onClick={() => setOpen((value) => !value)}
+        onClick={toggle}
         aria-expanded={open}
         className="text-xs font-semibold text-text-dim transition-colors hover:text-text"
       >
-        {open ? "Hide" : "Top"} comments ({comments.length}) {open ? "▴" : "▾"}
+        {open ? "Hide" : "Viewer"} comments ({comments.length}) {open ? "▴" : "▾"}
       </button>
 
       {open && (
+        <>
         <ul className="mt-2.5 space-y-2.5">
-          {comments.map((comment) => {
+          {visible.map((comment) => {
             const stance = STANCE_STYLES[comment.stance];
             return (
               <li key={comment.id} className="rounded-lg bg-surface-hover px-3 py-2.5">
@@ -118,6 +135,15 @@ export function TopComments({ youtubeId, comments }: { youtubeId: string; commen
             );
           })}
         </ul>
+        {remaining > 0 && (
+          <button
+            onClick={() => setVisibleCount((count) => count + COMMENTS_PER_STEP)}
+            className="mt-2.5 w-full rounded-lg border border-border py-1.5 text-xs font-semibold text-text-dim transition-colors hover:bg-surface-hover hover:text-text"
+          >
+            Show {Math.min(COMMENTS_PER_STEP, remaining)} more ({remaining} remaining)
+          </button>
+        )}
+        </>
       )}
     </div>
   );

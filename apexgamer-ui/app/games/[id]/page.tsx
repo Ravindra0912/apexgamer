@@ -2,9 +2,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { fetchGameById, fetchVideoGuides } from "@/lib/api";
-import { stripBBCode } from "@/lib/utils";
 import VideoGuides from "@/components/VideoGuides";
 import SystemRequirements from "@/components/SystemRequirements";
+import ScreenshotGallery from "@/components/ScreenshotGallery";
+import SteamReviews from "@/components/SteamReviews";
 
 export default async function GameDetailsPage({ params }: PageProps<"/games/[id]">) {
   const { id } = await params;
@@ -52,7 +53,7 @@ export default async function GameDetailsPage({ params }: PageProps<"/games/[id]
                 ★ {game.ratingRawg}
               </span>
             )}
-            {game.releaseDate && <span>Released {game.releaseDate}</span>}
+            <span>{game.releaseDate ? `Released ${game.releaseDate}` : "Release date TBA"}</span>
           </div>
         </div>
       </div>
@@ -102,15 +103,10 @@ export default async function GameDetailsPage({ params }: PageProps<"/games/[id]
           {game.screenshots.length > 0 && (
             <section className="mb-8">
               <h2 className="mb-3.5 text-[1.1rem] font-bold">Screenshots</h2>
-              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-                {game.screenshots.map((shot) =>
-                  shot.image ? (
-                    <div key={shot.id} className="relative aspect-video overflow-hidden rounded-[10px] border border-border">
-                      <Image src={shot.image} alt="" fill sizes="33vw" className="object-cover" />
-                    </div>
-                  ) : null
-                )}
-              </div>
+              <ScreenshotGallery
+                screenshots={game.screenshots.filter((shot): shot is typeof shot & { image: string } => Boolean(shot.image))}
+                gameName={game.name ?? "Game"}
+              />
             </section>
           )}
 
@@ -121,24 +117,7 @@ export default async function GameDetailsPage({ params }: PageProps<"/games/[id]
 
           <VideoGuides gameId={game.id} initialVideos={videoGuides} reviewSummary={reviewSummary} />
 
-          {game.reviews.length > 0 && (
-            <section className="mb-8">
-              <h2 className="mb-3.5 text-[1.1rem] font-bold">Reviews</h2>
-              {game.reviews.map((review) => (
-                <div key={review.id} className="mb-2.5 rounded-xl border border-border bg-surface px-4 py-3.5">
-                  <div className="mb-1.5 flex justify-between text-xs text-text-dim">
-                    {review.votesUp != null && (
-                      <span className="font-bold text-good">👍 {review.votesUp} helpful</span>
-                    )}
-                    {review.recommendationId && <span>Recommended</span>}
-                  </div>
-                  <p className="text-sm leading-relaxed text-text line-clamp-6">
-                    {stripBBCode(review.reviewText)}
-                  </p>
-                </div>
-              ))}
-            </section>
-          )}
+          <SteamReviews reviews={game.reviews} />
         </div>
 
         <div>
@@ -150,7 +129,7 @@ export default async function GameDetailsPage({ params }: PageProps<"/games/[id]
                 <DetailRow label="Metacritic" value={String(game.ratingMetacritic)} />
               )}
               {game.ratingRawg != null && <DetailRow label="RAWG Rating" value={`${game.ratingRawg} / 5`} />}
-              {game.releaseDate && <DetailRow label="Release Date" value={game.releaseDate} last />}
+              <DetailRow label="Release Date" value={game.releaseDate ?? "TBA"} last />
             </div>
           </section>
         </div>
