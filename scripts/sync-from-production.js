@@ -19,7 +19,17 @@ const neonPrisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: 
 async function main() {
   const [neonGames, localGames] = await Promise.all([
     neonPrisma.game.findMany({
-      select: { id: true, rId: true, name: true, steamId: true, platforms: true, systemRequirements: true, requirementsUpdatedAt: true },
+      select: {
+        id: true,
+        rId: true,
+        name: true,
+        steamId: true,
+        platforms: true,
+        systemRequirements: true,
+        requirementsUpdatedAt: true,
+        reviewCommentSummary: true,
+        reviewCommentsUpdatedAt: true,
+      },
     }),
     localPrisma.game.findMany({ select: { id: true, rId: true } }),
   ]);
@@ -42,11 +52,13 @@ async function main() {
         platforms: game.platforms || [],
         systemRequirements: game.systemRequirements ?? Prisma.DbNull,
         requirementsUpdatedAt: game.requirementsUpdatedAt,
+        reviewCommentSummary: game.reviewCommentSummary ?? Prisma.DbNull,
+        reviewCommentsUpdatedAt: game.reviewCommentsUpdatedAt,
       },
     });
     updated++;
   }
-  console.log(`requirements/platforms synced onto ${updated} local games`);
+  console.log(`requirements/platforms/comment summaries synced onto ${updated} local games`);
 
   const [neonGuides, localYoutubeIds] = await Promise.all([
     neonPrisma.videoGuide.findMany(),
@@ -68,6 +80,31 @@ async function main() {
     await localPrisma.videoGuide.createMany({ data: toCreate, skipDuplicates: true });
   }
   console.log(`video guides -> neon: ${neonGuides.length}, already local: ${have.size}, inserted: ${toCreate.length}, unmappable: ${unmappable}`);
+
+  // Review comments are mapped to local guides by youtubeId (unique in both
+  // databases). Production replaces a game's comments wholesale on every
+  // refresh, so local mirrors that: each mapped guide's comments are replaced
+  // rather than merged, and comments production has since dropped disappear.
+  const [neonComments, localGuides] = await Promise.all([
+    neonPrisma.videoComment.findMany({ include: { videoGuide: { select: { youtubeId: true } } } }),
+    localPrisma.videoGuide.findMany({ select: { id: true, youtubeId: true } }),
+  ]);
+  const localGuideIdByYoutubeId = new Map(localGuides.map((guide) => [guide.youtubeId, guide.id]));
+
+  const commentsToCreate = [];
+  let unmappableComments = 0;
+  for (const comment of neonComments) {
+    const localGuideId = localGuideIdByYoutubeId.get(comment.videoGuide.youtubeId);
+    if (!localGuideId) { unmappableComments++; continue; }
+    const { id, videoGuideId, videoGuide, ...rest } = comment;
+    commentsToCreate.push({ ...rest, videoGuideId: localGuideId });
+  }
+
+  await localPrisma.$transaction([
+    localPrisma.videoComment.deleteMany({}),
+    localPrisma.videoComment.createMany({ data: commentsToCreate, skipDuplicates: true }),
+  ]);
+  console.log(`review comments -> neon: ${neonComments.length}, copied: ${commentsToCreate.length}, unmappable: ${unmappableComments}`);
 
   await Promise.all([localPrisma.$disconnect(), neonPrisma.$disconnect()]);
 }
