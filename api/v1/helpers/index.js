@@ -122,6 +122,21 @@ const getPlatformNames = (rawgGame) =>
     .map((entry) => entry?.platform?.name)
     .filter((name) => typeof name === "string" && name.length > 0);
 
+// Cheap first-pass filter for YouTube comments, run before paying for a Gemini
+// call. Measured on real review videos it only removes 1–27 of 100, so it's a
+// cost trim, not the real filter — Gemini's classification does that.
+const MIN_COMMENT_LENGTH = 25;
+
+const rejectCommentByRules = (text) => {
+  const trimmed = (text || "").trim();
+  if (trimmed.length < MIN_COMMENT_LENGTH) return "too_short";
+  if (/https?:\/\/|www\./i.test(trimmed)) return "link";
+  if (/^(\d{1,2}:)?\d{1,2}:\d{2}\b/.test(trimmed) && trimmed.length < 60) return "timestamp";
+  const letters = (trimmed.match(/\p{L}/gu) || []).length;
+  if (letters / trimmed.length < 0.5) return "mostly_symbols";
+  return null;
+};
+
 const getIdFromSteamUrl = (steamUrl) => {
   const splitUrl = steamUrl?.split("/");
   let i = splitUrl?.length - 1;
@@ -142,4 +157,5 @@ module.exports = {
   classifyGameCategory,
   parseSteamRequirements,
   getPlatformNames,
+  rejectCommentByRules,
 };

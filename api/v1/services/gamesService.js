@@ -1,4 +1,4 @@
-const { getSummaryResponse, getTextSummary } = require("../clients/geminiClient");
+const { getSummaryResponse, getTextSummary, getJsonCompletion } = require("../clients/geminiClient");
 const { getRawgData } = require("../clients/rawgClient");
 const {
   fetchSteamAppDetails,
@@ -13,7 +13,7 @@ const {
   getPopularityPrimitives,
   EXTERNAL_GAME_SOURCE_STEAM,
 } = require("../clients/igdbClient");
-const { searchVideos, fetchVideoDetails } = require("../clients/youtubeClient");
+const { searchVideos, fetchVideoDetails, fetchCommentThreads } = require("../clients/youtubeClient");
 const gamesRepository = require("../repositories/gamesRepository");
 const {
   formatSearchResults,
@@ -21,6 +21,7 @@ const {
   classifyGameCategory,
   parseSteamRequirements,
   getPlatformNames,
+  rejectCommentByRules,
 } = require("../helpers/index");
 
 const RAWG_STEAM_STORE_ID = 1;
@@ -496,6 +497,255 @@ const backfillVideoSummaries = async () => {
   return { total: guides.length, updated, failed };
 };
 
+// ---- Review video comments ----------------------------------------------
+// Pipeline per game: fetch top comments on its review videos -> cheap rules ->
+// one Gemini classification call (keep only opinions of the game itself) ->
+// one Gemini summary call -> store. Prompt and thresholds were validated on
+// real review videos, including badly received games, before being wired in.
+
+const COMMENTS_PER_VIDEO = 100;
+const MAX_COMMENT_CHARS = 400;
+const MAX_OPINIONS_IN_SUMMARY_PROMPT = 80;
+
+// Measured: real reviews of released games kept 10–41 opinions per video,
+// while trailers and pre-release hype videos kept 2–4. Below this, there is
+// too little genuine opinion to summarize honestly, so nothing is shown.
+const MIN_OPINIONS_FOR_SUMMARY = 10;
+
+// Sentiment is derived from the stance counts rather than asked of the model,
+// so the label is reproducible and can't drift from the numbers shown beside
+// it. One side must clearly dominate; anything closer reads as mixed.
+const DOMINANT_STANCE_SHARE = 0.65;
+
+const STANCE_BY_CODE = { pos: "POSITIVE", neg: "NEGATIVE", mixed: "MIXED" };
+
+const commentClassificationPrompt = (gameName) => `These are YouTube comments on videos about the game "${gameName}". Each is prefixed with [index].
+Keep ONLY comments expressing the commenter's own opinion or first-hand experience of "${gameName}" ITSELF: gameplay, story, characters, combat, performance, bugs, price/value, or a comparison that states a view on "${gameName}".
+Reject:
+- jokes and memes;
+- reactions to the reviewer, channel or video, INCLUDING corrections or fact-checks of what the video said (e.g. "that's wrong, in the first game X worked like Y") — these are about the review, not an opinion of the game;
+- comments whose opinion is only about an earlier entry, a different game, the company or the industry — praise or criticism of a previous game in the series does NOT count as an opinion of "${gameName}";
+- reactions to a claim made in the video by someone who has not played it (e.g. "50 hours in the first area?!", "can't wait");
+- questions, and hype or anticipation with no substance.
+Negative and critical opinions are exactly as valuable as positive ones — apply the same standard to both.
+For each kept comment give stance ("pos"|"neg"|"mixed") and specificity: 1 = vague ("great game"), 2 = one concrete point, 3 = several concrete points or a reasoned argument.
+Return compact JSON only: {"keep":[[index,"stance",specificity], ...]}`;
+
+const commentSummaryPrompt = (gameName) => `Each line above is one YouTube viewer's opinion of the game "${gameName}", prefixed with its stance.
+Summarize them for someone deciding whether to play the game.
+- Paraphrase. Never quote a comment verbatim, and never mention individual commenters, reviewers or videos.
+- These are viewer opinions, not established facts — word them that way.
+- Reflect real disagreement where it exists; do not overstate consensus.
+Return JSON only:
+{"verdict":"<one sentence, at most 25 words, on overall viewer opinion of the game>","praised":["<short phrase>"],"criticized":["<short phrase>"]}
+List at most 4 points on each side, most common first. Use an empty array for a side viewers didn't raise.`;
+
+// Comments disabled or the video gone are per-video conditions: skip that
+// video and carry on. Anything else (quotaExceeded, a bad key) would fail on
+// every remaining call too, so it's rethrown to stop the run.
+const SKIPPABLE_COMMENT_ERRORS = new Set(["commentsDisabled", "videoNotFound"]);
+
+const fetchVideoComments = async (video) => {
+  try {
+    const response = await fetchCommentThreads(video.youtubeId, COMMENTS_PER_VIDEO);
+    return (response?.data?.items || []).map((item) => {
+      const top = item?.snippet?.topLevelComment;
+      const snippet = top?.snippet || {};
+      return {
+        youtubeCommentId: top?.id || item?.id,
+        videoGuideId: video.id,
+        authorName: snippet.authorDisplayName || null,
+        authorChannelUrl: snippet.authorChannelUrl || null,
+        text: snippet.textOriginal || snippet.textDisplay || "",
+        likeCount: snippet.likeCount ?? 0,
+        replyCount: item?.snippet?.totalReplyCount ?? 0,
+        publishedAt: snippet.publishedAt ? new Date(snippet.publishedAt) : null,
+      };
+    });
+  } catch (e) {
+    const reason = e?.response?.data?.error?.errors?.[0]?.reason;
+    if (SKIPPABLE_COMMENT_ERRORS.has(reason) || e?.response?.status === 404) return [];
+    throw e;
+  }
+};
+
+// Gemini occasionally returns an empty reply for a large, perfectly normal
+// batch: a full run kept 0 opinions from 273 Ghost of Yotei comments, then 12
+// on a straight retry. One retry separates that from a genuine absence without
+// failing forever on a game that really has no opinions.
+const SUSPICIOUS_EMPTY_CLASSIFICATION = 50;
+
+// The model answers with indices into the list it was shown, so every entry is
+// checked against that list — an invented index, unknown stance or out-of-range
+// specificity is dropped rather than trusted.
+const requestClassification = async (gameName, candidates) => {
+  const numbered = candidates
+    .map((comment, index) => `[${index}] ${comment.text.replace(/\s+/g, " ").slice(0, MAX_COMMENT_CHARS)}`)
+    .join("\n");
+
+  const result = await getJsonCompletion(
+    [
+      { role: "user", content: numbered },
+      { role: "user", content: commentClassificationPrompt(gameName) },
+    ],
+    { temperature: 0, maxTokens: 4096 },
+  );
+
+  const usedIndices = new Set();
+  return (Array.isArray(result?.keep) ? result.keep : []).flatMap((entry) => {
+    if (!Array.isArray(entry)) return [];
+    const [index, stanceCode, rawSpecificity] = entry;
+    const candidate = candidates[index];
+    const stance = STANCE_BY_CODE[stanceCode];
+    const specificity = Number(rawSpecificity);
+    if (!candidate || !stance || ![1, 2, 3].includes(specificity) || usedIndices.has(index)) return [];
+    usedIndices.add(index);
+    return [{ ...candidate, stance, specificity }];
+  });
+};
+
+const classifyComments = async (gameName, candidates) => {
+  if (!candidates.length) return [];
+  const opinions = await requestClassification(gameName, candidates);
+  if (opinions.length || candidates.length < SUSPICIOUS_EMPTY_CLASSIFICATION) return opinions;
+  return requestClassification(gameName, candidates);
+};
+
+const countStances = (opinions) => ({
+  positive: opinions.filter((opinion) => opinion.stance === "POSITIVE").length,
+  negative: opinions.filter((opinion) => opinion.stance === "NEGATIVE").length,
+  mixed: opinions.filter((opinion) => opinion.stance === "MIXED").length,
+});
+
+const deriveSentiment = (stanceCounts, total) => {
+  if (stanceCounts.positive / total >= DOMINANT_STANCE_SHARE) return "positive";
+  if (stanceCounts.negative / total >= DOMINANT_STANCE_SHARE) return "negative";
+  return "mixed";
+};
+
+const cleanPoints = (points) =>
+  (Array.isArray(points) ? points : [])
+    .filter((point) => typeof point === "string" && point.trim())
+    .map((point) => point.trim())
+    .slice(0, 4);
+
+const requestSummary = (gameName, promptLines) =>
+  getJsonCompletion(
+    [
+      { role: "user", content: promptLines },
+      { role: "user", content: commentSummaryPrompt(gameName) },
+    ],
+    { temperature: 0.2, maxTokens: 1024 },
+  );
+
+const readVerdict = (result) => (typeof result?.verdict === "string" ? result.verdict.trim() : "");
+
+const summarizeOpinions = async (gameName, opinions) => {
+  if (opinions.length < MIN_OPINIONS_FOR_SUMMARY) return null;
+
+  const promptLines = [...opinions]
+    .sort((a, b) => b.specificity - a.specificity || b.likeCount - a.likeCount)
+    .slice(0, MAX_OPINIONS_IN_SUMMARY_PROMPT)
+    .map((opinion) => `(${opinion.stance.toLowerCase()}) ${opinion.text.replace(/\s+/g, " ").slice(0, MAX_COMMENT_CHARS)}`)
+    .join("\n");
+
+  // A reply missing its verdict is an occasional glitch (seen on 2 of 134
+  // games, both fine on retry), so it gets one more attempt before failing.
+  let result = await requestSummary(gameName, promptLines);
+  if (!readVerdict(result)) result = await requestSummary(gameName, promptLines);
+
+  const verdict = readVerdict(result);
+  if (!verdict) throw new Error("Gemini summary came back without a verdict");
+
+  const stanceCounts = countStances(opinions);
+  return {
+    sentiment: deriveSentiment(stanceCounts, opinions.length),
+    verdict,
+    praised: cleanPoints(result.praised),
+    criticized: cleanPoints(result.criticized),
+    opinionCount: opinions.length,
+    videoCount: new Set(opinions.map((opinion) => opinion.videoGuideId)).size,
+    stanceCounts,
+  };
+};
+
+// Comments on an unreleased game's "review" videos are speculation, not
+// opinions — and the stored releaseDate can't gate that: RAWG gives games with
+// no announced date a year-end placeholder that silently passes (The Wolf
+// Among Us 2 is stored as 2025-12-31 while still unreleased). The live flags
+// below were checked against released and unreleased titles and cost no
+// YouTube quota. Steam is asked first when the game is on Steam; RAWG's tba
+// flag covers everything else.
+const isGameReleased = async (game) => {
+  if (game.steamId) {
+    try {
+      const response = await fetchSteamAppDetails(game.steamId);
+      const entry = response?.data?.[String(game.steamId)];
+      if (entry?.success && entry.data?.release_date) {
+        return !entry.data.release_date.coming_soon;
+      }
+    } catch {
+      // Steam's storefront API is unofficial and flaky; fall back to RAWG.
+    }
+  }
+
+  const response = await getRawgData(`games/${game.rId}`);
+  const rawgGame = response?.data;
+  if (!rawgGame?.released || rawgGame.tba) return false;
+  return rawgGame.released <= new Date().toISOString().slice(0, 10);
+};
+
+// Throws on Gemini or quota failures without writing anything, so the game
+// stays unstamped and the next run retries it.
+const refreshReviewCommentsForGame = async (gameId) => {
+  const game = await gamesRepository.findGameById(gameId);
+  if (!game?.name) return null;
+
+  const videos = await gamesRepository.findReviewVideosForGame(gameId);
+  if (!videos.length) return null;
+
+  // Checked before fetching comments, so unreleased games spend no quota. Any
+  // previously stored comments/summary are cleared rather than left showing.
+  if (!(await isGameReleased(game))) {
+    await gamesRepository.replaceReviewComments(gameId, videos.map((video) => video.id), [], null);
+    return { videos: videos.length, unreleased: true, fetched: 0, candidates: 0, opinions: 0, summary: null };
+  }
+
+  const fetched = [];
+  for (const video of videos) {
+    fetched.push(...(await fetchVideoComments(video)));
+  }
+
+  const seenText = new Set();
+  const candidates = fetched.filter((comment) => {
+    if (!comment.youtubeCommentId || rejectCommentByRules(comment.text)) return false;
+    const key = comment.text.trim().toLowerCase();
+    if (seenText.has(key)) return false;
+    seenText.add(key);
+    return true;
+  });
+
+  const opinions = await classifyComments(game.name, candidates);
+  const summary = await summarizeOpinions(game.name, opinions);
+
+  // Below the threshold nothing is stored: those few "opinions" are exactly the
+  // low-signal cases (trailers, pre-release hype) the threshold exists to hide.
+  await gamesRepository.replaceReviewComments(
+    gameId,
+    videos.map((video) => video.id),
+    summary ? opinions : [],
+    summary,
+  );
+
+  return {
+    videos: videos.length,
+    fetched: fetched.length,
+    candidates: candidates.length,
+    opinions: opinions.length,
+    summary,
+  };
+};
+
 // Backfills platforms + requirements for a game that predates those columns.
 // Platforms come from RAWG (the only source here that knows about consoles)
 // and requirements from Steam, so a game missing one can still get the other.
@@ -531,4 +781,5 @@ module.exports = {
   refreshTrendingScores,
   refreshVideoGuidesForGame,
   backfillVideoSummaries,
+  refreshReviewCommentsForGame,
 };

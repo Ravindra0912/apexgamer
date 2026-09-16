@@ -4,8 +4,8 @@ import { fetchVideoGuides, refreshVideoGuides } from "@/lib/api";
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
-    const videos = await fetchVideoGuides(Number(id));
-    return NextResponse.json({ data: videos });
+    const { videos, reviewSummary } = await fetchVideoGuides(Number(id));
+    return NextResponse.json({ data: videos, reviewSummary });
   } catch {
     return NextResponse.json({ error: "Failed to fetch video guides" }, { status: 502 });
   }

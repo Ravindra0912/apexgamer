@@ -108,8 +108,13 @@ const getVideoGuides = async (req, res, next) => {
     if (!Number.isInteger(gameId)) {
       return res.status(400).json({ error: "id must be an integer" });
     }
-    const videos = await gamesRepository.findVideoGuidesByGameId(gameId);
-    res.status(200).json({ data: videos });
+    const [videos, reviewSummary] = await Promise.all([
+      gamesRepository.findVideoGuidesByGameId(gameId),
+      gamesRepository.findReviewCommentSummary(gameId),
+    ]);
+    // reviewSummary is null when there were too few genuine opinions to
+    // summarize or the game is unreleased — the UI shows nothing in that case.
+    res.status(200).json({ data: videos, reviewSummary });
   } catch (e) {
     next(e);
   }

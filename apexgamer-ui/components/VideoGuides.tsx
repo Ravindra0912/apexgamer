@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import { useState } from "react";
-import { VideoGuide, VideoGuideCategory } from "@/lib/types";
+import { ReviewCommentSummary, VideoGuide, VideoGuideCategory } from "@/lib/types";
+import { ReviewSummaryCard, TopComments } from "./ReviewInsights";
 import Spinner from "./Spinner";
 
 const CATEGORY_ORDER: VideoGuideCategory[] = ["BEFORE_YOU_BUY", "REVIEW", "NEW_PLAYER_GUIDE", "GAMEPLAY"];
@@ -17,9 +18,11 @@ const CATEGORY_LABELS: Record<VideoGuideCategory, string> = {
 export default function VideoGuides({
   gameId,
   initialVideos,
+  reviewSummary,
 }: {
   gameId: number;
   initialVideos: VideoGuide[];
+  reviewSummary: ReviewCommentSummary | null;
 }) {
   const [videos, setVideos] = useState(initialVideos);
   const [loading, setLoading] = useState(false);
@@ -73,39 +76,51 @@ export default function VideoGuides({
             <h3 className="mb-2.5 text-xs font-bold uppercase tracking-wide text-text-dim">
               {CATEGORY_LABELS[category]}
             </h3>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {grouped[category].map((video) => (
-                <a
-                  key={video.id}
-                  href={`https://www.youtube.com/watch?v=${video.youtubeId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex gap-3 rounded-xl border border-border bg-surface p-3 transition-colors hover:bg-surface-hover"
-                >
-                  {video.thumbnail && (
-                    <Image
-                      src={video.thumbnail}
-                      alt=""
-                      width={120}
-                      height={68}
-                      className="h-[68px] w-[120px] shrink-0 rounded-lg object-cover"
-                    />
-                  )}
-                  <div className="min-w-0">
-                    <p className="mb-1 line-clamp-2 text-sm font-semibold leading-snug">{video.title}</p>
-                    {video.channelName && (
-                      <p className="mb-1 text-xs text-text-dim">{video.channelName}</p>
-                    )}
-                    {video.aiSummary && (
-                      <p className="line-clamp-2 text-xs leading-relaxed text-text-dim">{video.aiSummary}</p>
-                    )}
+            {category === "REVIEW" && reviewSummary && <ReviewSummaryCard summary={reviewSummary} />}
+            <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
+              {grouped[category].map((video) =>
+                // Only review videos carry comments. The card link and the
+                // comments toggle are siblings, since a button can't live
+                // inside an anchor.
+                video.comments?.length ? (
+                  <div key={video.id} className="overflow-hidden rounded-xl border border-border bg-surface">
+                    <VideoLink video={video} className="border-0 rounded-none" />
+                    <TopComments youtubeId={video.youtubeId} comments={video.comments} />
                   </div>
-                </a>
-              ))}
+                ) : (
+                  <VideoLink key={video.id} video={video} />
+                ),
+              )}
             </div>
           </div>
         ) : null,
       )}
     </section>
+  );
+}
+
+function VideoLink({ video, className = "" }: { video: VideoGuide; className?: string }) {
+  return (
+    <a
+      href={`https://www.youtube.com/watch?v=${video.youtubeId}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`flex gap-3 rounded-xl border border-border bg-surface p-3 transition-colors hover:bg-surface-hover ${className}`}
+    >
+      {video.thumbnail && (
+        <Image
+          src={video.thumbnail}
+          alt=""
+          width={120}
+          height={68}
+          className="h-[68px] w-[120px] shrink-0 rounded-lg object-cover"
+        />
+      )}
+      <div className="min-w-0">
+        <p className="mb-1 line-clamp-2 text-sm font-semibold leading-snug">{video.title}</p>
+        {video.channelName && <p className="mb-1 text-xs text-text-dim">{video.channelName}</p>}
+        {video.aiSummary && <p className="line-clamp-2 text-xs leading-relaxed text-text-dim">{video.aiSummary}</p>}
+      </div>
+    </a>
   );
 }

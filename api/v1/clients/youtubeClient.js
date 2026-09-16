@@ -31,7 +31,26 @@ const fetchVideoDetails = (videoIds) =>
     },
   });
 
+// Top-level comments ranked by YouTube's "relevance" order. The API has no
+// most-liked ordering (only relevance or time), so callers re-rank by likes
+// themselves. 1 quota unit per call for up to 100 comments. Videos with
+// comments disabled return 403 "commentsDisabled".
+const fetchCommentThreads = (videoId, maxResults = 100) =>
+  axios({
+    method: "get",
+    url: "https://www.googleapis.com/youtube/v3/commentThreads",
+    params: {
+      key: process.env.YOUTUBE_API_KEY,
+      part: "snippet",
+      videoId,
+      order: "relevance",
+      maxResults,
+      textFormat: "plainText",
+    },
+  });
+
 module.exports = {
   searchVideos,
   fetchVideoDetails,
+  fetchCommentThreads,
 };

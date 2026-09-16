@@ -27,6 +27,23 @@ export type GameSort = "trending" | "popular" | "newest";
 
 export type VideoGuideCategory = "REVIEW" | "BEFORE_YOU_BUY" | "GAMEPLAY" | "NEW_PLAYER_GUIDE";
 
+export type CommentStance = "POSITIVE" | "NEGATIVE" | "MIXED";
+
+// A YouTube comment the backend judged to be a genuine opinion of the game.
+// Only review videos carry these; everything else has an empty array.
+export type VideoComment = {
+  id: number;
+  youtubeCommentId: string;
+  authorName: string | null;
+  authorChannelUrl: string | null;
+  text: string;
+  likeCount: number;
+  replyCount: number;
+  stance: CommentStance;
+  specificity: number;
+  publishedAt: string | null;
+};
+
 export type VideoGuide = {
   id: number;
   gameId: number;
@@ -38,6 +55,24 @@ export type VideoGuide = {
   aiSummary: string | null;
   publishedAt: string | null;
   createdAt: string;
+  comments: VideoComment[];
+};
+
+// Present only when enough genuine viewer opinions existed to summarize and
+// the game is released; null otherwise.
+export type ReviewCommentSummary = {
+  sentiment: "positive" | "negative" | "mixed";
+  verdict: string;
+  praised: string[];
+  criticized: string[];
+  opinionCount: number;
+  videoCount: number;
+  stanceCounts: { positive: number; negative: number; mixed: number };
+};
+
+export type VideoGuidesResponse = {
+  videos: VideoGuide[];
+  reviewSummary: ReviewCommentSummary | null;
 };
 
 // One "Memory: 8 GB RAM" line from a Steam requirements list. `label` is null

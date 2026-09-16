@@ -12,7 +12,10 @@ export default async function GameDetailsPage({ params }: PageProps<"/games/[id]
 
   if (!game) notFound();
 
-  const videoGuides = await fetchVideoGuides(game.id).catch(() => []);
+  const { videos: videoGuides, reviewSummary } = await fetchVideoGuides(game.id).catch(() => ({
+    videos: [],
+    reviewSummary: null,
+  }));
 
   return (
     <>
@@ -116,7 +119,7 @@ export default async function GameDetailsPage({ params }: PageProps<"/games/[id]
             requirements={game.systemRequirements ?? null}
           />
 
-          <VideoGuides gameId={game.id} initialVideos={videoGuides} />
+          <VideoGuides gameId={game.id} initialVideos={videoGuides} reviewSummary={reviewSummary} />
 
           {game.reviews.length > 0 && (
             <section className="mb-8">

@@ -241,10 +241,66 @@ const findGameById = async (id) => {
   return prisma.game.findUnique({ where: { id } });
 };
 
+// Top comments per video only — the page shows three, and every stored comment
+// already passed the opinion filter, so specificity then likes is the whole
+// ranking.
+const TOP_COMMENTS_PER_VIDEO = 3;
+
 const findVideoGuidesByGameId = async (gameId) => {
   return prisma.videoGuide.findMany({
     where: { gameId },
     orderBy: [{ category: "asc" }, { publishedAt: "desc" }],
+    include: {
+      comments: {
+        orderBy: [{ specificity: "desc" }, { likeCount: "desc" }],
+        take: TOP_COMMENTS_PER_VIDEO,
+      },
+    },
+  });
+};
+
+const findReviewCommentSummary = async (gameId) => {
+  const game = await prisma.game.findUnique({
+    where: { id: gameId },
+    select: { reviewCommentSummary: true },
+  });
+  return game?.reviewCommentSummary ?? null;
+};
+
+const findReviewVideosForGame = async (gameId) => {
+  return prisma.videoGuide.findMany({
+    where: { gameId, category: "REVIEW" },
+    select: { id: true, youtubeId: true, title: true },
+  });
+};
+
+// Swaps a game's review comments and summary in one transaction, so a failed
+// refresh never leaves the page showing new comments beside a stale summary.
+const replaceReviewComments = async (gameId, videoGuideIds, comments, summary) => {
+  await prisma.$transaction([
+    prisma.videoComment.deleteMany({ where: { videoGuideId: { in: videoGuideIds } } }),
+    prisma.videoComment.createMany({ data: comments, skipDuplicates: true }),
+    prisma.game.update({
+      where: { id: gameId },
+      data: {
+        reviewCommentSummary: summary ?? Prisma.DbNull,
+        reviewCommentsUpdatedAt: new Date(),
+      },
+    }),
+  ]);
+};
+
+// Games never refreshed, or refreshed before `staleBefore` — YouTube API data
+// may only be kept ~30 days before it must be refreshed or deleted.
+const findGamesNeedingCommentRefresh = async ({ staleBefore, limit }) => {
+  return prisma.game.findMany({
+    where: {
+      videoGuides: { some: { category: "REVIEW" } },
+      OR: [{ reviewCommentsUpdatedAt: null }, { reviewCommentsUpdatedAt: { lt: staleBefore } }],
+    },
+    select: { id: true, name: true },
+    orderBy: { id: "asc" },
+    take: limit,
   });
 };
 
@@ -289,6 +345,10 @@ module.exports = {
   deleteAllGames,
   findGameById,
   findVideoGuidesByGameId,
+  findReviewCommentSummary,
+  findReviewVideosForGame,
+  replaceReviewComments,
+  findGamesNeedingCommentRefresh,
   findExistingYoutubeIds,
   findVideoGuidesMissingSummary,
   updateVideoGuideSummary,

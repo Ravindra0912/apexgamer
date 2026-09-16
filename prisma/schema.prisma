@@ -42,6 +42,15 @@ model Game {
   // Set on every completed lookup, including ones that found nothing, so the
   // backfill can tell "not checked yet" from "checked, Steam had no data".
   requirementsUpdatedAt DateTime?
+  // Gemini's digest of opinion-bearing comments across this game's review
+  // videos: { sentiment, verdict, praised[], criticized[], opinionCount,
+  // videoCount }. Null when there weren't enough real opinions to summarize
+  // honestly (e.g. an unreleased game whose "review" videos are trailers).
+  reviewCommentSummary   Json?
+  // Stamped on every completed refresh, including ones that found too little
+  // to summarize — YouTube API data may only be kept ~30 days before it must
+  // be refreshed, so this drives the refresh script's staleness check.
+  reviewCommentsUpdatedAt DateTime?
   reviews             Review[]
   screenshots         Screenshot[]
   tags                GameTag[]
@@ -115,8 +124,39 @@ model VideoGuide {
   aiSummary   String?
   publishedAt DateTime?
   createdAt   DateTime @default(now())
+  comments    VideoComment[]
 
   @@index([gameId])
+}
+
+// Only comments Gemini judged to be an opinion of the game itself are stored —
+// jokes, reactions to the reviewer and fact-checks of the video are dropped at
+// ingest, so everything here is displayable.
+model VideoComment {
+  id               Int        @id @default(autoincrement())
+  videoGuideId     Int
+  videoGuide       VideoGuide @relation(fields: [videoGuideId], references: [id], onDelete: Cascade)
+  youtubeCommentId String     @unique
+  authorName       String?
+  authorChannelUrl String?
+  text             String
+  likeCount        Int        @default(0)
+  replyCount       Int        @default(0)
+  stance           CommentStance
+  // 1 = vague ("great game"), 2 = one concrete point, 3 = several points or a
+  // reasoned argument. Display order is specificity first, then likes, so a
+  // highly liked one-liner never outranks a substantive comment.
+  specificity      Int
+  publishedAt      DateTime?
+  fetchedAt        DateTime   @default(now())
+
+  @@index([videoGuideId])
+}
+
+enum CommentStance {
+  POSITIVE
+  NEGATIVE
+  MIXED
 }
 
 enum VideoGuideCategory {

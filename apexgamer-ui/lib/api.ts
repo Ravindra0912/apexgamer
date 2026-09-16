@@ -1,4 +1,4 @@
-import { Game, GameCategory, GamesPage, GameSort, VideoGuide } from "./types";
+import { Game, GameCategory, GamesPage, GameSort, VideoGuide, VideoGuidesResponse } from "./types";
 
 const API_URL = process.env.API_URL ?? "http://localhost:7000";
 
@@ -34,11 +34,11 @@ export async function fetchGameById(id: number): Promise<Game | null> {
   return data.find((game) => game.id === id) ?? null;
 }
 
-export async function fetchVideoGuides(gameId: number): Promise<VideoGuide[]> {
+export async function fetchVideoGuides(gameId: number): Promise<VideoGuidesResponse> {
   const res = await fetch(`${API_URL}/games/${gameId}/videos`, { cache: "no-store" });
   if (!res.ok) throw new Error(`Failed to fetch video guides: ${res.status}`);
-  const { data } = await res.json();
-  return data;
+  const { data, reviewSummary } = await res.json();
+  return { videos: data, reviewSummary: reviewSummary ?? null };
 }
 
 // Separate from fetchVideoGuides so a page view never silently spends

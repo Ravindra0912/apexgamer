@@ -43,7 +43,7 @@ const waitForRateLimitSlot = async () => {
 // Shared paced-and-retried completion call. `isRetriableParseError` lets a
 // caller-specific parse step (e.g. JSON parsing) count as retriable without
 // this function knowing anything about the output shape.
-const createChatCompletion = async (messages, { responseFormat, maxTokens, parse } = {}) => {
+const createChatCompletion = async (messages, { responseFormat, maxTokens, temperature, parse } = {}) => {
   let lastError;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -53,7 +53,7 @@ const createChatCompletion = async (messages, { responseFormat, maxTokens, parse
         model: MODEL,
         messages,
         ...(responseFormat ? { response_format: responseFormat } : {}),
-        temperature: 1,
+        temperature: temperature ?? 1,
         max_tokens: maxTokens ?? 1024,
       });
       const content = completion?.choices?.[0]?.message?.content;
@@ -75,12 +75,16 @@ const createChatCompletion = async (messages, { responseFormat, maxTokens, parse
 };
 
 // Even with JSON mode the model occasionally wraps output in a markdown fence.
+const parseJson = (content) =>
+  JSON.parse(
+    String(content || "")
+      .replace(/^\s*```(?:json)?/i, "")
+      .replace(/```\s*$/, "")
+      .trim(),
+  );
+
 const parseSummary = (content) => {
-  const cleaned = String(content || "")
-    .replace(/^\s*```(?:json)?/i, "")
-    .replace(/```\s*$/, "")
-    .trim();
-  const summary = JSON.parse(cleaned);
+  const summary = parseJson(content);
   return {
     pros: Array.isArray(summary?.pros) ? summary.pros : [],
     cons: Array.isArray(summary?.cons) ? summary.cons : [],
@@ -107,7 +111,19 @@ const getTextSummary = (content, prompt) =>
     { role: "user", content: prompt },
   ]);
 
+// Generic JSON-mode completion for callers that validate their own output
+// shape. Pass temperature 0 for classification-style tasks, where the same
+// input should give the same answer on every run.
+const getJsonCompletion = (messages, { maxTokens, temperature } = {}) =>
+  createChatCompletion(messages, {
+    responseFormat: { type: "json_object" },
+    maxTokens,
+    temperature,
+    parse: parseJson,
+  });
+
 module.exports = {
   getSummaryResponse,
   getTextSummary,
+  getJsonCompletion,
 };
