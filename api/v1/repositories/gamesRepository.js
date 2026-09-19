@@ -217,22 +217,33 @@ const findGamesWithSteamId = async () => {
   });
 };
 
+// One UPDATE ... FROM (VALUES ...) for every game rather than a transaction of
+// per-game updates. The transaction cost one network round trip per game and
+// hit Prisma's 5s transaction timeout once the daily pipeline ran it from
+// GitHub's runners against Neon (~137 games took 5.2s); it had passed locally
+// only because a local database answers almost instantly. A single statement
+// is still atomic, costs one round trip however large the catalog grows.
+//
+// Raw SQL doesn't bump Prisma's @updatedAt, which is fine here: a trending
+// recalculation isn't an edit to the game.
 const updateTrendingData = async (updates) => {
   if (!updates.length) return;
-  await prisma.$transaction(
-    updates.map((update) =>
-      prisma.game.update({
-        where: { id: update.id },
-        data: {
-          steamCcu: update.steamCcu,
-          steamOwnersLabel: update.steamOwnersLabel,
-          igdbPopularity: update.igdbPopularity,
-          trendingScore: update.trendingScore,
-          popularityUpdatedAt: new Date(),
-        },
-      }),
-    ),
+  const refreshedAt = new Date();
+  const rows = updates.map(
+    (update) =>
+      Prisma.sql`(${update.id}::int, ${update.steamCcu ?? null}::int, ${update.steamOwnersLabel ?? null}::text, ${
+        update.igdbPopularity ?? null
+      }::float8, ${update.trendingScore ?? null}::float8)`,
   );
+  await prisma.$executeRaw`
+    UPDATE "Game" AS game
+    SET "steamCcu" = incoming.ccu,
+        "steamOwnersLabel" = incoming.owners,
+        "igdbPopularity" = incoming.igdb,
+        "trendingScore" = incoming.score,
+        "popularityUpdatedAt" = ${refreshedAt}
+    FROM (VALUES ${Prisma.join(rows)}) AS incoming(id, ccu, owners, igdb, score)
+    WHERE game.id = incoming.id`;
 };
 
 // requirementsUpdatedAt is stamped even when Steam returned nothing, so the

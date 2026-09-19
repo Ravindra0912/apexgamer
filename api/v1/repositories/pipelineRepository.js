@@ -1,3 +1,4 @@
+const { Prisma } = require("@prisma/client");
 const prisma = require("../../../config/prismaClient");
 
 // Queries that let each daily-pipeline stage find its own work from database
@@ -31,13 +32,26 @@ const findStaleVideoGuides = async ({ staleBefore, limit }) => {
   });
 };
 
+// A single UPDATE ... FROM (VALUES ...) per batch, not a transaction of
+// per-row updates: that pattern costs a round trip per row and is what broke
+// the trending stage against Prisma's 5s transaction timeout on CI. This
+// batch (50 rows) was still passing at ~2s, but only with a few seconds to
+// spare.
 const updateVideoGuideMetadata = async (updates) => {
   if (!updates.length) return;
-  await prisma.$transaction(
-    updates.map(({ id, ...data }) =>
-      prisma.videoGuide.update({ where: { id }, data: { ...data, metadataRefreshedAt: new Date() } }),
-    ),
+  const refreshedAt = new Date();
+  const rows = updates.map(
+    ({ id, title, channelName, thumbnail }) =>
+      Prisma.sql`(${id}::int, ${title}::text, ${channelName ?? null}::text, ${thumbnail ?? null}::text)`,
   );
+  await prisma.$executeRaw`
+    UPDATE "VideoGuide" AS guide
+    SET "title" = incoming.title,
+        "channelName" = incoming.channel,
+        "thumbnail" = incoming.thumbnail,
+        "metadataRefreshedAt" = ${refreshedAt}
+    FROM (VALUES ${Prisma.join(rows)}) AS incoming(id, title, channel, thumbnail)
+    WHERE guide.id = incoming.id`;
 };
 
 // Comments cascade with the guide.
